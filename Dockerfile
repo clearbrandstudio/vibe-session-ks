@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy server dependencies and install (production only)
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --production --ignore-scripts
 
 # Copy server source code and configuration
 COPY server.js ./
