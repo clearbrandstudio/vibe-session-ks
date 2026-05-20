@@ -620,29 +620,41 @@ export default function StagePage() {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
 
+    const updateStateFromData = (data) => {
+      setRealQueue(data.queue || []);
+      setRealCurrent(data.currentSong || null);
+      setRealPrep(data.currentPrep || null);
+
+      if (data.currentSong) {
+        setIsDemoMode(false);
+        setStage(ST.PLAYING);
+      } else if (data.currentPrep) {
+        setIsDemoMode(false);
+        const songId = data.currentPrep?.song?.id;
+        if (songId && lastPrepIdRef.current !== songId) {
+          lastPrepIdRef.current = songId;
+          setStage(ST.STINGER);
+        } else {
+          setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
+        }
+      } else {
+        if (!isDemoMode) {
+          setStage(ST.IDLE);
+        }
+      }
+    };
+
     // Initial State Fetch
     fetch(`/api/state?room=${roomID}`)
       .then(res => res.json())
-      .then(data => {
-        setRealQueue(data.queue || []);
-        if (data.currentSong) {
-          setIsDemoMode(false);
-          setRealCurrent(data.currentSong);
-          setStage(ST.PLAYING);
-        } else if (data.currentPrep) {
-          setIsDemoMode(false);
-          setRealPrep(data.currentPrep);
-          lastPrepIdRef.current = data.currentPrep?.song?.id;
-          setStage(ST.COUNTDOWN);
-        } else {
-          setStage(ST.IDLE);
-        }
-      });
+      .then(data => updateStateFromData(data))
+      .catch(err => console.warn('[Stage State Init] error:', err));
 
     // Settings Fetch
     fetch(`/api/settings?room=${roomID}`)
       .then(res => res.json())
-      .then(data => setSettings(data));
+      .then(data => setSettings(data))
+      .catch(err => console.warn('[Stage Settings Init] error:', err));
 
     const onQueueUpdated = ({ queue: newQueue, currentSong: cs, currentPrep: cp }) => {
       setRealQueue(newQueue || []);
@@ -729,12 +741,24 @@ export default function StagePage() {
     socket.on('song:play', onSongPlay);
     socket.on('settings:updated', onSettingsUpdated);
 
+    // Fallback polling interval: if socket is disconnected, poll state every 1.5 seconds
+    const pollInterval = setInterval(() => {
+      if (!socket.connected) {
+        console.log('[Stage] Socket disconnected. Polling fallback state...');
+        fetch(`/api/state?room=${roomID}`)
+          .then(res => res.json())
+          .then(data => updateStateFromData(data))
+          .catch(err => console.warn('[Stage Polling] Error:', err));
+      }
+    }, 1500);
+
     return () => {
       socket.off('queue:updated', onQueueUpdated);
       socket.off('song:prep', onSongPrep);
       socket.off('state:sync', onStateSync);
       socket.off('song:play', onSongPlay);
       socket.off('settings:updated', onSettingsUpdated);
+      clearInterval(pollInterval);
     };
   }, [isDemoMode]);
 

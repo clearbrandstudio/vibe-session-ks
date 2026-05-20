@@ -14,7 +14,11 @@ const io = new Server(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  // Allow polling fallback for Coolify/Traefik reverse proxy
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
 });
 
 app.use(cors());
@@ -273,6 +277,72 @@ app.get('/api/state', (req, res) => {
   const room = getRoomState(roomID);
   res.json({ queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
 });
+
+// ──────────────────────────────────────────────
+// REST – HTTP fallback for queue:add
+// (used when WebSocket is blocked by reverse proxy)
+// ──────────────────────────────────────────────
+app.post('/api/queue/add', (req, res) => {
+  const roomID = req.query.room || req.body.room || 'default';
+  const { videoId, title, thumbnail, channel, singerName } = req.body;
+
+  if (!videoId || !singerName || !singerName.trim()) {
+    return res.status(400).json({ error: 'videoId and singerName are required' });
+  }
+
+  const room = getRoomState(roomID);
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    videoId,
+    title,
+    thumbnail,
+    channel,
+    singerName: singerName.trim(),
+    addedAt: new Date().toISOString(),
+  };
+
+  room.queue.push(entry);
+  console.log(`[Queue HTTP - ${roomID}] Added: "${title}" for ${singerName}`);
+
+  if (!room.currentSong && !room.currentPrep) {
+    room.currentPrep = { song: room.queue.shift(), timeLeft: getRoomPrepDuration(roomID) };
+    startPrepCountdown(io, roomID);
+  } else {
+    io.to(roomID).emit('queue:updated', {
+      queue: room.queue,
+      currentSong: room.currentSong,
+      currentPrep: room.currentPrep
+    });
+  }
+
+  res.json({
+    success: true,
+    queue: room.queue,
+    currentSong: room.currentSong,
+    currentPrep: room.currentPrep,
+    position: room.queue.length + (room.currentPrep ? 1 : 0) + (room.currentSong ? 1 : 0)
+  });
+});
+
+// REST – HTTP fallback for queue:next (skip/stop current song)
+app.post('/api/queue/next', (req, res) => {
+  const roomID = req.query.room || req.body.room || 'default';
+  const room = getRoomState(roomID);
+
+  if (room.queue.length > 0) {
+    room.currentSong = null;
+    room.currentPrep = { song: room.queue.shift(), timeLeft: getRoomPrepDuration(roomID) };
+    startPrepCountdown(io, roomID);
+  } else {
+    room.currentSong = null;
+    room.currentPrep = null;
+    if (room.prepTimer) clearInterval(room.prepTimer);
+    io.to(roomID).emit('song:play', { currentSong: null, queue: [] });
+  }
+
+  res.json({ success: true, queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
+});
+
 
 // ──────────────────────────────────────────────
 // Socket.io

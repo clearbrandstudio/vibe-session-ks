@@ -354,18 +354,30 @@ export default function KioskPage() {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
 
-    // Initial fetch
+    // Initial search
     handleSearch("karaoke hits 2024", "all");
 
-    // Settings Fetch
-    fetch(`/api/settings?room=${roomID}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.businessName) setBusinessName(data.businessName);
-        if (data.promoText) setPromoText(data.promoText);
-        if (data.prepDuration) setPrepDuration(data.prepDuration);
-        if (data.youtubeApiKey) setCustomApiKey(data.youtubeApiKey);
-      });
+    // Fetch initial settings & state
+    const fetchSettingsAndState = () => {
+      fetch(`/api/settings?room=${roomID}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.businessName) setBusinessName(data.businessName);
+          if (data.promoText) setPromoText(data.promoText);
+          if (data.prepDuration) setPrepDuration(data.prepDuration);
+          if (data.youtubeApiKey) setCustomApiKey(data.youtubeApiKey);
+        }).catch(err => console.warn('[Settings fallback] failed to fetch:', err));
+
+      fetch(`/api/state?room=${roomID}`)
+        .then(res => res.json())
+        .then(data => {
+          setServerQueue(data.queue || []);
+          setCurrentSong(data.currentSong || null);
+          setCurrentPrep(data.currentPrep || null);
+        }).catch(err => console.warn('[State fallback] failed to fetch:', err));
+    };
+
+    fetchSettingsAndState();
 
     // settings updated listener
     const onSettingsUpdated = (newSettings) => {
@@ -387,13 +399,11 @@ export default function KioskPage() {
       setCurrentSong(currentSong || null);
       setCurrentPrep(currentPrep || null);
     };
-    // song:prep fires every second from server — update currentPrep
     const onSongPrep = ({ currentPrep: cp, queue: q }) => {
       setCurrentPrep(cp || null);
       if (q) setServerQueue(q);
       setCurrentSong(null);
     };
-    // song:play fires when countdown hits zero — update currentSong
     const onSongPlay = ({ currentSong: cs, queue: q }) => {
       setCurrentSong(cs || null);
       setCurrentPrep(null);
@@ -405,14 +415,30 @@ export default function KioskPage() {
     socket.on("song:prep", onSongPrep);
     socket.on("song:play", onSongPlay);
 
+    // Fallback polling interval: if socket is disconnected, poll every 2 seconds
+    const pollInterval = setInterval(() => {
+      if (!socket.connected) {
+        console.log('[Kiosk] Socket disconnected. Polling fallback state...');
+        fetch(`/api/state?room=${roomID}`)
+          .then(res => res.json())
+          .then(data => {
+            setServerQueue(data.queue || []);
+            setCurrentSong(data.currentSong || null);
+            setCurrentPrep(data.currentPrep || null);
+          }).catch(err => console.warn('[Kiosk Polling] Error:', err));
+      }
+    }, 2000);
+
     return () => {
       socket.off("state:sync", onSync);
       socket.off("queue:updated", onUpdate);
       socket.off("song:prep", onSongPrep);
       socket.off("song:play", onSongPlay);
       socket.off("settings:updated", onSettingsUpdated);
+      clearInterval(pollInterval);
     };
   }, []);
+
 
   const handleSearch = async (query, lang = activeLang) => {
     if (!query) return;
@@ -439,20 +465,50 @@ export default function KioskPage() {
   const [modalName, setModalName] = useState("");
   const modalNameRef = useRef(null);
 
-  const queueSongToServer = (song, overrideName) => {
+  const queueSongToServer = async (song, overrideName) => {
     const nameToUse = (overrideName || singerName || "").trim();
     if (!nameToUse) return;
     if (serverQueue.some(s => s.videoId === song.videoId && s.singerName === nameToUse)) {
       showToast("Already queued this song under your name!");
       return;
     }
-    socket.emit("queue:add", {
-      ...song,
-      singerName: nameToUse
-    });
-    setAddedSong({ song, position: serverQueue.length + 1 });
-    showToast(`Reserved "${song.title}"!`);
+
+    const params = new URLSearchParams(window.location.search);
+    const roomID = params.get('room') || 'default';
+
+    try {
+      // PRIMARY: HTTP POST — works 100% regardless of WebSocket/proxy issues
+      const res = await fetch(`/api/queue/add?room=${roomID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: song.videoId,
+          title: song.title,
+          thumbnail: song.thumbnail,
+          channel: song.channel,
+          singerName: nameToUse,
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update local state immediately from server response
+        setServerQueue(data.queue || []);
+        setCurrentSong(data.currentSong || null);
+        setCurrentPrep(data.currentPrep || null);
+        setAddedSong({ song, position: data.position || 1 });
+        showToast(`Reserved "${song.title}"! 🎤`);
+      } else {
+        showToast("Failed to add song — " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error('[Queue] HTTP add failed, falling back to socket:', err);
+      // FALLBACK: socket emit
+      socket.emit("queue:add", { ...song, singerName: nameToUse });
+      setAddedSong({ song, position: serverQueue.length + 1 });
+      showToast(`Reserved "${song.title}"! 🎤`);
+    }
   };
+
 
   const handleSongClick = (song) => {
     setPendingSong(song);
