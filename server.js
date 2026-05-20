@@ -157,7 +157,7 @@ app.get('/api/settings', (req, res) => {
   try {
     const settingsPath = path.join(__dirname, 'settings.json');
     if (!fs.existsSync(settingsPath)) {
-      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions', promoText: '', prepDuration: 15 });
+      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions Studio', promoText: '', prepDuration: 15, vignette: 35 });
     }
     const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     // If it's a legacy flat file, convert it to room-based
@@ -167,6 +167,7 @@ app.get('/api/settings', (req, res) => {
          legacy.youtubeApiKey = envKey;
        }
        legacy.prepDuration = parseInt(legacy.prepDuration) || 15;
+       if (legacy.vignette === undefined) legacy.vignette = 35;
        res.json(legacy);
        return;
     }
@@ -174,7 +175,14 @@ app.get('/api/settings', (req, res) => {
     const finalKey = allSettings.youtubeApiKey && allSettings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE'
       ? allSettings.youtubeApiKey
       : envKey;
-    res.json({ ...settings, youtubeApiKey: finalKey, prepDuration: settings.prepDuration || 15 });
+    res.json({
+      businessName: 'Vibe Sessions Studio',
+      promoText: '',
+      prepDuration: 15,
+      vignette: 35,
+      ...settings,
+      youtubeApiKey: finalKey
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load settings' });
   }
@@ -183,7 +191,7 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
   const roomID = req.query.room || 'default';
   try {
-    const { youtubeApiKey, businessName, promoText, prepDuration } = req.body;
+    const { youtubeApiKey, businessName, promoText, prepDuration, vignette } = req.body;
     const settingsPath = path.join(__dirname, 'settings.json');
     let allSettings = { rooms: {} };
     if (fs.existsSync(settingsPath)) {
@@ -195,9 +203,10 @@ app.post('/api/settings', (req, res) => {
     
     allSettings.rooms[roomID] = {
       ...allSettings.rooms[roomID],
-      businessName: businessName || (allSettings.rooms[roomID]?.businessName || 'Vibe Sessions'),
-      promoText: promoText || (allSettings.rooms[roomID]?.promoText || ''),
-      prepDuration: parseInt(prepDuration) || (allSettings.rooms[roomID]?.prepDuration || 15)
+      businessName: businessName || (allSettings.rooms[roomID]?.businessName || 'Vibe Sessions Studio'),
+      promoText: promoText !== undefined ? promoText : (allSettings.rooms[roomID]?.promoText || ''),
+      prepDuration: parseInt(prepDuration) || (allSettings.rooms[roomID]?.prepDuration || 15),
+      vignette: vignette !== undefined ? parseInt(vignette) : (allSettings.rooms[roomID]?.vignette !== undefined ? parseInt(allSettings.rooms[roomID].vignette) : 35)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));

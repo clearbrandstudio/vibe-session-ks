@@ -19,6 +19,10 @@ const ST = {
 const VIBE_STUDIO_COVERS = [
   { videoId: "mdMWwFN-rtQ", title: "Yesterday Once More", artist: "JOED (The Carpenters Cover)" },
   { videoId: "Ph2aBlmS3Cc", title: "So Slow", artist: "Mel (Freestyle Acoustic Cover)" },
+  { videoId: "bo_efYhYU2A", title: "Shallow", artist: "Acoustic Session (Lady Gaga Cover)" },
+  { videoId: "4NRXx6U8ABQ", title: "Blinding Lights", artist: "Synthpop Session (The Weeknd Cover)" },
+  { videoId: "hLQl3WQQoQ0", title: "Someone Like You", artist: "Piano Session (Adele Cover)" },
+  { videoId: "TUVcZfQe-Kw", title: "Levitating", artist: "Dance Session (Dua Lipa Cover)" }
 ];
 
 const DEMO_QUEUE = [
@@ -32,47 +36,55 @@ const DEMO_QUEUE = [
 
 // --- ATMOSPHERE COMPONENTS ---
 
-const Atmo = () => (
-  <div className="fixed inset-0 pointer-events-none overflow-hidden bg-[#04020a] z-0">
-    {/* Layer 1: Animated Mesh Gradients */}
-    <div className="absolute inset-0 opacity-55">
+const Atmo = ({ vignette }) => {
+  const finalVignette = vignette !== undefined ? vignette : 35;
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden bg-[#04020a] z-0">
+      {/* Layer 1: Animated Mesh Gradients */}
+      <div className="absolute inset-0 opacity-55">
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 20% 80%, #4c1d95 0%, transparent 50%), radial-gradient(circle at 80% 20%, #db2777 0%, transparent 50%), radial-gradient(circle at 50% 50%, #7c3aed 0%, transparent 60%)',
+            animation: 'meshA 12s ease-in-out infinite'
+          }}
+        />
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 70% 80%, #9d174d 0%, transparent 50%), radial-gradient(circle at 10% 20%, #5b21b6 0%, transparent 50%)',
+            animation: 'meshB 15s ease-in-out infinite'
+          }}
+        />
+      </div>
+
+      {/* Layer 2: Perspective Grid */}
+      <div className="perspective-grid absolute inset-0 z-1" />
+
+      {/* Layer 3: SVG Noise */}
+      <div className="absolute inset-0 z-2 opacity-[0.04]">
+        <svg width="100%" height="100%">
+          <filter id="nf">
+            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+            <feColorMatrix type="saturate" values="0"/>
+          </filter>
+          <rect width="100%" height="100%" filter="url(#nf)"/>
+        </svg>
+      </div>
+
+      {/* Layer 4: Scanlines */}
+      <div className="scanlines absolute inset-0 z-3 pointer-events-none" />
+
+      {/* Layer 6: Radial Vignette */}
       <div 
-        className="absolute inset-0"
+        className="absolute inset-0 z-5 pointer-events-none transition-all duration-300" 
         style={{
-          background: 'radial-gradient(circle at 20% 80%, #4c1d95 0%, transparent 50%), radial-gradient(circle at 80% 20%, #db2777 0%, transparent 50%), radial-gradient(circle at 50% 50%, #7c3aed 0%, transparent 60%)',
-          animation: 'meshA 12s ease-in-out infinite'
-        }}
-      />
-      <div 
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(circle at 70% 80%, #9d174d 0%, transparent 50%), radial-gradient(circle at 10% 20%, #5b21b6 0%, transparent 50%)',
-          animation: 'meshB 15s ease-in-out infinite'
+          background: `radial-gradient(ellipse 90% 90% at 50% 50%, transparent 50%, rgba(4, 2, 10, ${finalVignette / 100}) 100%)`
         }}
       />
     </div>
-
-    {/* Layer 2: Perspective Grid */}
-    <div className="perspective-grid absolute inset-0 z-1" />
-
-    {/* Layer 3: SVG Noise */}
-    <div className="absolute inset-0 z-2 opacity-[0.04]">
-      <svg width="100%" height="100%">
-        <filter id="nf">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-          <feColorMatrix type="saturate" values="0"/>
-        </filter>
-        <rect width="100%" height="100%" filter="url(#nf)"/>
-      </svg>
-    </div>
-
-    {/* Layer 4: Scanlines */}
-    <div className="scanlines absolute inset-0 z-3 pointer-events-none" />
-
-    {/* Layer 6: Radial Vignette */}
-    <div className="radial-vignette absolute inset-0 z-5 pointer-events-none" />
-  </div>
-);
+  );
+};
 
 const Particles = () => {
   const canvasRef = useRef(null);
@@ -402,7 +414,7 @@ const Countdown = ({ current, onComplete }) => {
     >
       <div className="text-center space-y-4">
         <span className="font-syne text-[11px] font-bold uppercase tracking-[0.45em] animate-[labelGlow_3s_infinite]">Next Up</span>
-        <h1 className="LuxeFont text-gradient-broadcast text-[clamp(42px,8vw,88px)] leading-tight">{current.singerName}</h1>
+        <h1 className="LuxeFont text-white drop-shadow-[0_0_20px_rgba(217,70,239,0.7)] text-[clamp(42px,8vw,88px)] leading-tight">{current.singerName}</h1>
         <div>
            <p className="font-syne text-[clamp(15px,2.5vw,24px)] text-[#f8f4ff]/75 tracking-wider uppercase">{current.title}</p>
            <p className="font-dm text-[clamp(12px,1.8vw,17px)] text-[#7c6f9a]">{current.artist}</p>
@@ -432,7 +444,7 @@ const Countdown = ({ current, onComplete }) => {
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span 
-            className={`LuxeFont text-[clamp(64px,10vw,110px)] transition-all duration-150 ${flash ? 'text-white scale-110 drop-shadow-[0_0_30px_rgba(255,255,255,0.8)]' : 'text-gradient-broadcast'}`}
+            className={`LuxeFont text-[clamp(64px,10vw,110px)] transition-all duration-150 text-white drop-shadow-[0_0_20px_rgba(217,70,239,0.7)] ${flash ? 'scale-110 drop-shadow-[0_0_30px_rgba(255,255,255,0.8)]' : ''}`}
           >
             {Math.max(0, count)}
           </span>
@@ -452,7 +464,7 @@ const Countdown = ({ current, onComplete }) => {
 
 const NPBar = ({ current, queue = [] }) => {
   return (
-    <div className="fixed bottom-0 left-0 w-full z-20 bg-gradient-to-t from-[#040210/98] via-[#040210/70] to-transparent p-4 px-8 flex items-center gap-6">
+    <div className="fixed bottom-0 left-0 w-full z-20 bg-gradient-to-t from-[#040210/98] via-[#040210/70] to-transparent p-4 px-8 flex items-center gap-6 pointer-events-none">
        <div className="flex gap-1 h-4 items-end">
           {[1, 2, 3].map(i => (
             <motion.div 
@@ -485,13 +497,28 @@ const NPBar = ({ current, queue = [] }) => {
           )}
        </div>
 
-       <span className="font-syne text-[10px] text-white/20 tracking-[0.25em] uppercase">Vibe Sessions</span>
+       <span className="font-syne text-[10px] text-white/20 tracking-[0.25em] uppercase">Vibe Sessions Studio</span>
     </div>
   );
 }
 
 const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
   const playerRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
+
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  const [isIntroActive, setIsIntroActive] = useState(true);
+
+  useEffect(() => {
+    setIsIntroActive(true);
+    const timer = setTimeout(() => {
+      setIsIntroActive(false);
+    }, 15000); // 15 seconds
+    return () => clearTimeout(timer);
+  }, [current.videoId]);
 
   useEffect(() => {
     // YouTube API Load
@@ -517,7 +544,9 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
         events: {
           onReady: (e) => e.target.playVideo(),
           onStateChange: (e) => {
-             if (e.data === 0) onEnded(); // Song ended
+             if (e.data === 0 && onEndedRef.current) {
+               onEndedRef.current(); // Song ended
+             }
           }
         }
       });
@@ -532,7 +561,9 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
     return () => {
       if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
     };
-  }, [current.videoId, onEnded]);
+  }, [current.videoId]);
+
+  const isHUDVisible = isIntroActive && showHUD;
 
   return (
     <motion.div 
@@ -545,10 +576,27 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
          <div className="absolute inset-0 bg-black/40 bg-gradient-to-t from-black via-transparent to-black" />
       </div>
 
+      {/* Top-Right Minimized Neon Capsule Badge */}
+      <AnimatePresence>
+        {!isHUDVisible && (
+          <motion.div 
+            initial={{ opacity: 0, x: 30 }} 
+            animate={{ opacity: 1, x: 0 }} 
+            exit={{ opacity: 0, x: 30 }}
+            transition={{ type: "spring", stiffness: 100, damping: 15 }}
+            className="fixed top-12 right-12 z-20 bg-black/50 border border-[#d946ef]/40 backdrop-blur-md px-5 py-2.5 rounded-full shadow-[0_0_15px_rgba(217,70,239,0.45)] flex items-center gap-2 pointer-events-none"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899] animate-ping shrink-0" />
+            <span className="font-syne text-[8px] uppercase tracking-widest text-[#c8b9e6]/60">Singing:</span>
+            <span className="font-syne font-extrabold text-xs uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-[#d946ef] to-[#ec4899] drop-shadow-[0_0_8px_rgba(217,70,239,0.7)]">{current.singerName}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Ghost Watermark */}
       <motion.div 
-        animate={{ opacity: showHUD ? 0.1 : 0 }}
-        transition={{ duration: 1.5 }}
+        animate={{ opacity: isHUDVisible ? 0.15 : 0 }}
+        transition={{ duration: 1.2 }}
         className="absolute inset-0 z-[8] pointer-events-none select-none flex items-center justify-center"
       >
         <h2 className="LuxeFont text-[clamp(80px,14vw,180px)] text-transparent" style={{ WebkitTextStroke: '1px rgba(248, 244, 255, 0.15)' }}>
@@ -556,31 +604,32 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
         </h2>
       </motion.div>
 
+      {/* Main glass-card intro display */}
       <motion.div 
         animate={{ 
-          opacity: showHUD ? 1 : 0, 
-          y: showHUD ? 0 : -40,
-          scale: showHUD ? 1 : 0.9 
+          opacity: isHUDVisible ? 1 : 0, 
+          y: isHUDVisible ? 0 : -40,
+          scale: isHUDVisible ? 1 : 0.9 
         }}
-        transition={{ duration: 1.2, ease: "easeInOut" }}
+        transition={{ duration: 1.0, ease: "easeInOut" }}
         className="glass-card-stage z-10 p-10 md:p-16 max-w-[min(580px,88vw)] w-full text-center space-y-6 pointer-events-none"
       >
         <span className="font-syne text-[10px] uppercase tracking-[0.4em] animate-[labelGlow_3s_infinite]">Now Performing</span>
-        <h1 className="LuxeFont text-gradient-broadcast text-[clamp(40px,7.5vw,88px)] leading-[1.05] tracking-tight">{current.singerName}</h1>
+        <h1 className="LuxeFont text-white drop-shadow-[0_0_25px_rgba(217,70,239,0.8)] text-[clamp(40px,7.5vw,88px)] leading-[1.05] tracking-tight">{current.singerName}</h1>
         <div className="w-16 h-[1px] mx-auto bg-gradient-to-r from-transparent via-[#db2777] to-transparent shadow-[0_0_10px_rgba(217,70,239,0.5)]" />
         <div className="space-y-1">
           <p className="font-syne text-[clamp(15px,2.2vw,24px)] text-[#f8f4ff]/80 tracking-wide">{current.title}</p>
           <p className="font-dm text-[clamp(12px,1.6vw,17px)] text-[#7c6f9a]">{current.artist}</p>
         </div>
         <div className="opacity-70 pt-4">
-          <Waveform active={true} />
+          <Waveform active={isHUDVisible} />
         </div>
       </motion.div>
 
       <motion.div 
-        animate={{ opacity: showHUD ? 1 : 0 }}
-        transition={{ delay: showHUD ? 0.8 : 0, duration: 0.5 }}
-        className="mt-8 text-[#7c6f9a]/60 font-syne text-[11px] uppercase tracking-[0.2em] flex items-center gap-2"
+        animate={{ opacity: isHUDVisible ? 1 : 0 }}
+        transition={{ delay: isHUDVisible ? 0.6 : 0, duration: 0.5 }}
+        className="mt-8 text-[#7c6f9a]/60 font-syne text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 pointer-events-none"
       >
         Next Singer <span className="animate-pulse">&rarr;</span>
       </motion.div>
@@ -604,7 +653,7 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
       <NPBar current={current} queue={queue} />
     </motion.div>
   );
-};
+};;
 
 const PromoPlayingScreen = ({ video, onEnded, settings }) => {
   const playerRef = useRef(null);
@@ -891,7 +940,7 @@ export default function StagePage() {
     };
   }, [hasStarted, realQueue.length, realCurrent, realPrep, stage]);
 
-  const startSession = async () => {
+  const startSession = useCallback(async () => {
     if (isDemoMode) {
       setStage(ST.STINGER);
     } else {
@@ -918,9 +967,9 @@ export default function StagePage() {
         socket.emit('queue:next');
       }
     }
-  };
+  }, [isDemoMode]);
 
-  const nextSong = async () => {
+  const nextSong = useCallback(async () => {
     if (isDemoMode) {
       setDemoIndex(prev => (prev + 1) % DEMO_QUEUE.length);
       setStage(ST.STINGER);
@@ -948,20 +997,20 @@ export default function StagePage() {
         socket.emit('queue:next');
       }
     }
-  };
+  }, [isDemoMode]);
 
   if (!hasStarted) {
     return (
       <div className="fixed inset-0 bg-[#04020a] flex items-center justify-center text-white">
-         <Atmo />
+         <Atmo vignette={settings?.vignette} />
          <Particles />
          <div className="relative z-10 text-center space-y-10 animate-[fadeInUp_1s_ease]">
             <div className="space-y-4">
-              <span className="font-syne text-[11px] text-[#db2777] uppercase tracking-[0.5em] animate-pulse">Ready for Show</span>
-              <h1 className="LuxeFont text-white text-[clamp(48px,8vw,82px)] tracking-tighter leading-tight drop-shadow-[0_0_50px_rgba(139,92,246,0.3)]">
-                {settings?.businessName || 'Vibe Sessions Studio'}
-              </h1>
-              <p className="font-dm text-white/40 text-lg max-w-lg mx-auto leading-relaxed">Phnom Penh's #1 Cinematic Karaoke Stage & Digital Signage Experience</p>
+               <span className="font-syne text-[11px] text-[#db2777] uppercase tracking-[0.5em] animate-pulse">Ready for Show</span>
+               <h1 className="LuxeFont text-white text-[clamp(48px,8vw,82px)] tracking-tighter leading-tight drop-shadow-[0_0_50px_rgba(139,92,246,0.3)]">
+                 {settings?.businessName || 'Vibe Sessions Studio'}
+               </h1>
+               <p className="font-dm text-white/40 text-lg max-w-lg mx-auto leading-relaxed">Phnom Penh's #1 Cinematic Karaoke Stage & Digital Signage Experience</p>
             </div>
             
             <motion.button 
@@ -982,13 +1031,13 @@ export default function StagePage() {
 
   return (
     <div className="fixed inset-0 bg-[#04020a] overflow-hidden select-none text-white">
-      <Atmo />
+      <Atmo vignette={settings?.vignette} />
       <Particles />
 
       {/* Logo Bug */}
       <div className="fixed top-12 left-12 z-25 opacity-30 font-syne text-[11px] text-[#f8f4ff] tracking-[0.4em] uppercase pointer-events-none flex items-center gap-4">
         <div className="w-1.5 h-1.5 bg-[#db2777] rounded-full animate-pulse" />
-        {settings?.businessName || 'Vibe Sessions'}
+        {settings?.businessName || 'Vibe Sessions Studio'}
       </div>
 
       <div className="relative z-10 w-full h-full flex items-center justify-center">
@@ -1030,7 +1079,14 @@ export default function StagePage() {
               key="promo" 
               video={VIBE_STUDIO_COVERS[promoIndex]} 
               onEnded={() => {
-                setPromoIndex(prev => (prev + 1) % VIBE_STUDIO_COVERS.length);
+                setPromoIndex(prev => {
+                  if (VIBE_STUDIO_COVERS.length <= 1) return 0;
+                  let next;
+                  do {
+                    next = Math.floor(Math.random() * VIBE_STUDIO_COVERS.length);
+                  } while (next === prev);
+                  return next;
+                });
               }}
               settings={settings}
             />

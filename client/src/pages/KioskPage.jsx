@@ -325,9 +325,10 @@ export default function KioskPage() {
   const [cancelSong, setCancelSong] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [customApiKey, setCustomApiKey] = useState(localStorage.getItem("VIBE_YT_KEY") || "");
-  const [businessName, setBusinessName] = useState("Vibe Sessions");
+  const [businessName, setBusinessName] = useState("Vibe Sessions Studio");
   const [promoText, setPromoText] = useState("");
   const [prepDuration, setPrepDuration] = useState(15);
+  const [vignette, setVignette] = useState(35);
   const [toast, setToast] = useState({ show: false, msg: "" });
   const [shakeInput, setShakeInput] = useState(false);
 
@@ -336,6 +337,7 @@ export default function KioskPage() {
   const [tempBusinessName, setTempBusinessName] = useState("");
   const [tempPromoText, setTempPromoText] = useState("");
   const [tempPrepDuration, setTempPrepDuration] = useState(15);
+  const [tempVignette, setTempVignette] = useState(35);
 
   const [showCancelCurrentModal, setShowCancelCurrentModal] = useState(false);
   const [showQueueDrawer, setShowQueueDrawer] = useState(false); // mobile queue drawer
@@ -370,6 +372,7 @@ export default function KioskPage() {
           if (data.promoText) setPromoText(data.promoText);
           if (data.prepDuration) setPrepDuration(data.prepDuration);
           if (data.youtubeApiKey) setCustomApiKey(data.youtubeApiKey);
+          if (data.vignette !== undefined) setVignette(data.vignette);
         }).catch(err => console.warn('[Settings fallback] failed to fetch:', err));
 
       fetch(`/api/state?room=${roomID}`)
@@ -389,6 +392,7 @@ export default function KioskPage() {
       if (newSettings.promoText) setPromoText(newSettings.promoText);
       if (newSettings.prepDuration) setPrepDuration(newSettings.prepDuration);
       if (newSettings.youtubeApiKey) setCustomApiKey(newSettings.youtubeApiKey);
+      if (newSettings.vignette !== undefined) setVignette(newSettings.vignette);
     };
     socket.on("settings:updated", onSettingsUpdated);
 
@@ -587,7 +591,7 @@ export default function KioskPage() {
     }
   };
 
-  const saveSettings = async (key, bName, pText, duration) => {
+  const saveSettings = async (key, bName, pText, duration, vignetteVal) => {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
 
@@ -599,7 +603,8 @@ export default function KioskPage() {
           youtubeApiKey: key,
           businessName: bName,
           promoText: pText,
-          prepDuration: parseInt(duration) || 15
+          prepDuration: parseInt(duration) || 15,
+          vignette: vignetteVal !== undefined ? parseInt(vignetteVal) : 35
         })
       });
       const data = await res.json();
@@ -608,6 +613,9 @@ export default function KioskPage() {
         setBusinessName(bName);
         setPromoText(pText);
         setPrepDuration(parseInt(duration) || 15);
+        if (data.settings?.vignette !== undefined) {
+          setVignette(data.settings.vignette);
+        }
         setShowSettings(false);
         showToast("Settings saved to server!");
         handleSearch(searchValue || "karaoke hits 2024");
@@ -626,7 +634,7 @@ export default function KioskPage() {
       <nav className="relative z-[100] flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-2 sm:py-3 border-b border-[#8b5cf6]/18 bg-[#040202]/88 backdrop-blur-2xl shrink-0">
         {/* Logo */}
         <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-xs sm:text-sm font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase shrink-0">
-          {businessName || 'Vibe Sessions'}
+          {businessName || 'Vibe Sessions Studio'}
         </div>
 
         {/* Search Bar */}
@@ -693,6 +701,7 @@ export default function KioskPage() {
             setTempBusinessName(businessName);
             setTempPromoText(promoText);
             setTempPrepDuration(prepDuration);
+            setTempVignette(vignette);
             setShowSettings(true);
           }}
           className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#0c061a]/80 border border-[#8b5cf6]/30 flex items-center justify-center text-[#8b5cf6] hover:text-[#d946ef] hover:border-[#d946ef]/60 transition-all group"
@@ -1040,6 +1049,24 @@ export default function KioskPage() {
                    </select>
                  </div>
 
+                  <div>
+                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">
+                      Radial Vignette Darkness ({tempVignette}%)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] text-[#7c6f9a]">Bright</span>
+                      <input 
+                         type="range"
+                         min="0"
+                         max="100"
+                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-2 rounded-lg cursor-pointer"
+                         value={tempVignette}
+                         onChange={(e) => setTempVignette(parseInt(e.target.value))}
+                      />
+                      <span className="text-[10px] text-[#7c6f9a]">Dark</span>
+                    </div>
+                  </div>
+
                  <div>
                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">YouTube API Key</label>
                    <input 
@@ -1053,7 +1080,7 @@ export default function KioskPage() {
                  </div>
 
                  <button 
-                   onClick={() => saveSettings(tempApiKey, tempBusinessName, tempPromoText, tempPrepDuration)}
+                   onClick={() => saveSettings(tempApiKey, tempBusinessName, tempPromoText, tempPrepDuration, tempVignette)}
                    className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[10px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95"
                  >
                    Save & Sync Configuration
