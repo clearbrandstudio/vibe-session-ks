@@ -181,8 +181,19 @@ export default function KioskPage() {
   const [cancelSong, setCancelSong] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [customApiKey, setCustomApiKey] = useState(localStorage.getItem("VIBE_YT_KEY") || "");
+  const [businessName, setBusinessName] = useState("Vibe Sessions");
+  const [promoText, setPromoText] = useState("");
+  const [prepDuration, setPrepDuration] = useState(15);
   const [toast, setToast] = useState({ show: false, msg: "" });
   const [shakeInput, setShakeInput] = useState(false);
+
+  // Temp settings values for modal
+  const [tempApiKey, setTempApiKey] = useState("");
+  const [tempBusinessName, setTempBusinessName] = useState("");
+  const [tempPromoText, setTempPromoText] = useState("");
+  const [tempPrepDuration, setTempPrepDuration] = useState(15);
+
+  const [showCancelCurrentModal, setShowCancelCurrentModal] = useState(false);
 
   // Server state sync
   const [serverQueue, setServerQueue] = useState([]);
@@ -209,10 +220,20 @@ export default function KioskPage() {
     fetch(`/api/settings?room=${roomID}`)
       .then(res => res.json())
       .then(data => {
-        if (data.businessName) {
-           // We can update the UI with business name if needed
-        }
+        if (data.businessName) setBusinessName(data.businessName);
+        if (data.promoText) setPromoText(data.promoText);
+        if (data.prepDuration) setPrepDuration(data.prepDuration);
+        if (data.youtubeApiKey) setCustomApiKey(data.youtubeApiKey);
       });
+
+    // settings updated listener
+    const onSettingsUpdated = (newSettings) => {
+      if (newSettings.businessName) setBusinessName(newSettings.businessName);
+      if (newSettings.promoText) setPromoText(newSettings.promoText);
+      if (newSettings.prepDuration) setPrepDuration(newSettings.prepDuration);
+      if (newSettings.youtubeApiKey) setCustomApiKey(newSettings.youtubeApiKey);
+    };
+    socket.on("settings:updated", onSettingsUpdated);
 
     // Socket listeners
     const onSync = ({ queue, currentSong, currentPrep }) => {
@@ -232,6 +253,7 @@ export default function KioskPage() {
     return () => {
       socket.off("state:sync", onSync);
       socket.off("queue:updated", onUpdate);
+      socket.off("settings:updated", onSettingsUpdated);
     };
   }, []);
 
@@ -314,7 +336,7 @@ export default function KioskPage() {
     // We keep the singer name for the session unless they clear it
   };
 
-  const saveSettings = async (key) => {
+  const saveSettings = async (key, bName, pText, duration) => {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
 
@@ -322,11 +344,19 @@ export default function KioskPage() {
       const res = await fetch(`/api/settings?room=${roomID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtubeApiKey: key })
+        body: JSON.stringify({
+          youtubeApiKey: key,
+          businessName: bName,
+          promoText: pText,
+          prepDuration: parseInt(duration) || 15
+        })
       });
       const data = await res.json();
       if (data.success) {
         setCustomApiKey(key);
+        setBusinessName(bName);
+        setPromoText(pText);
+        setPrepDuration(parseInt(duration) || 15);
         setShowSettings(false);
         showToast("Settings saved to server!");
         handleSearch(searchValue || "karaoke hits 2024");
@@ -344,7 +374,7 @@ export default function KioskPage() {
       {/* NAV BAR */}
       <nav className="relative z-[100] flex items-center gap-4 px-6 py-3 border-b border-[#8b5cf6]/18 bg-[#040202]/88 backdrop-blur-2xl">
         <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-sm font-bold tracking-[0.3em] uppercase animate-[glow_3s_infinite] shrink-0">
-          Vibe Sessions
+          {businessName || 'Vibe Sessions'}
         </div>
         <div className="flex-1" />
         
@@ -408,7 +438,13 @@ export default function KioskPage() {
 
       {/* Floating Settings Gear (top right for easy access) */}
       <button 
-        onClick={() => setShowSettings(true)}
+        onClick={() => {
+          setTempApiKey(customApiKey);
+          setTempBusinessName(businessName);
+          setTempPromoText(promoText);
+          setTempPrepDuration(prepDuration);
+          setShowSettings(true);
+        }}
         className="fixed top-3 right-3 z-[200] w-10 h-10 rounded-full bg-[#0c061a]/80 backdrop-blur-xl border border-[#8b5cf6]/30 flex items-center justify-center text-[#8b5cf6] hover:text-[#d946ef] hover:border-[#d946ef]/60 transition-all shadow-2xl group"
       >
         <svg className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -539,6 +575,13 @@ export default function KioskPage() {
                     <div className="text-[11px] font-bold truncate">{currentSong.title}</div>
                     <div className="text-[9px] text-[#7c6f9a] truncate">{currentSong.singerName}</div>
                  </div>
+                 <button
+                   onClick={() => setShowCancelCurrentModal(true)}
+                   className="px-2.5 py-1 rounded-full bg-[#ec4899]/15 text-[#ec4899] hover:bg-[#ec4899]/25 text-[8px] font-syne font-bold uppercase tracking-wider transition-all shrink-0"
+                   title="Stop current performance"
+                 >
+                   Stop
+                 </button>
                </div>
              ) : (
                <div className="text-[10px] text-[#7c6f9a]/30 italic text-center py-2 uppercase tracking-tighter">No live performer</div>
@@ -663,7 +706,7 @@ export default function KioskPage() {
           <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-3xl" onClick={() => setShowSettings(false)}>
             <motion.div 
               initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
-              className="bg-[#0c051a]/97 border border-[#8b5cf6]/18 rounded-[32px] p-8 max-w-[420px] w-full shadow-2xl relative"
+              className="bg-[#0c051a]/97 border border-[#8b5cf6]/18 rounded-[32px] p-8 max-w-[420px] w-full shadow-2xl relative overflow-y-auto max-h-[90vh]"
               onClick={e => e.stopPropagation()}
             >
                <button onClick={() => setShowSettings(false)} className="absolute top-6 right-6 text-[#8b5cf6]/35 hover:text-white transition-all">✕</button>
@@ -671,23 +714,92 @@ export default function KioskPage() {
                
                <div className="space-y-6">
                  <div>
-                   <label className="block font-syne text-[10px] uppercase tracking-widest text-[#7c6f9a] mb-3">YouTube API Key</label>
+                   <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Event / Show Title</label>
+                   <input 
+                      type="text"
+                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      placeholder="e.g. John's Birthday, Vibe Sessions Studio..."
+                      value={tempBusinessName}
+                      onChange={(e) => setTempBusinessName(e.target.value)}
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Slogan / Rolling Text Bar</label>
+                   <input 
+                      type="text"
+                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      placeholder="e.g. Get 20% off all drinks at the bar! 🎤"
+                      value={tempPromoText}
+                      onChange={(e) => setTempPromoText(e.target.value)}
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Singer Loading Time (Seconds)</label>
+                   <select 
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      value={tempPrepDuration}
+                      onChange={(e) => setTempPrepDuration(parseInt(e.target.value))}
+                   >
+                      <option value={5}>5 seconds (Fastest)</option>
+                      <option value={10}>10 seconds</option>
+                      <option value={15}>15 seconds (Standard)</option>
+                      <option value={20}>20 seconds</option>
+                      <option value={30}>30 seconds (Long showcase)</option>
+                      <option value={45}>45 seconds</option>
+                      <option value={60}>60 seconds</option>
+                   </select>
+                 </div>
+
+                 <div>
+                   <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">YouTube API Key</label>
                    <input 
                       type="password"
-                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3.5 text-xs outline-none focus:border-[#d946ef]/45 transition-all font-mono"
+                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3.5 text-xs outline-none focus:border-[#d946ef]/45 transition-all font-mono text-[#F8F4FF]"
                       placeholder="Paste your key here..."
-                      value={customApiKey}
-                      onChange={(e) => setCustomApiKey(e.target.value)}
+                      value={tempApiKey}
+                      onChange={(e) => setTempApiKey(e.target.value)}
                    />
-                   <p className="mt-2 text-[9px] text-[#7c6f9a]/60 leading-relaxed italic">The key is stored locally on this device. Never share your production keys.</p>
+                   <p className="mt-2 text-[8px] text-[#7c6f9a]/60 leading-relaxed italic">Synchronized instantly to Stage and all connected Kiosks.</p>
                  </div>
 
                  <button 
-                   onClick={() => saveSettings(customApiKey)}
-                   className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[10px] font-bold uppercase tracking-widest shadow-xl"
+                   onClick={() => saveSettings(tempApiKey, tempBusinessName, tempPromoText, tempPrepDuration)}
+                   className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[10px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95"
                  >
-                   Save & Sync Key
+                   Save & Sync Configuration
                  </button>
+               </div>
+            </motion.div>
+          </div>
+        )}
+        {showCancelCurrentModal && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl" onClick={() => setShowCancelCurrentModal(false)}>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#0c051a]/97 border border-[#ec4899]/60 rounded-[32px] p-8 max-w-[360px] w-full shadow-[0_0_60px_rgba(236,72,153,0.25)] text-center relative"
+              onClick={e => e.stopPropagation()}
+            >
+               <button onClick={() => setShowCancelCurrentModal(false)} className="absolute top-6 right-6 text-[#8b5cf6]/35 hover:text-white transition-all">✕</button>
+               
+               <div className="w-14 h-14 rounded-2xl bg-[#ec4899]/12 border border-[#ec4899]/24 flex items-center justify-center mx-auto mb-4 text-2xl text-[#EC4899]">⚠️</div>
+               
+               <h3 className="LuxeFont text-xl text-center mb-2">Stop Performance?</h3>
+               <p className="text-[11px] text-[#c8b9e6]/60 mb-6 leading-relaxed">Are you sure to stop the current song being performed?</p>
+               
+               <div className="flex gap-4">
+                  <button onClick={() => setShowCancelCurrentModal(false)} className="flex-1 py-3 rounded-full border border-[#8b5cf6]/18 text-[10px] font-bold uppercase tracking-widest text-[#F8F4FF]/60 hover:text-white transition-all">No</button>
+                  <button 
+                    onClick={() => {
+                      socket.emit("queue:next");
+                      setShowCancelCurrentModal(false);
+                      showToast("Stopping current performance");
+                    }}
+                    className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#EC4899] to-[#D946EF] text-white text-[10px] font-bold uppercase tracking-widest"
+                  >
+                    Yes, Stop
+                  </button>
                </div>
             </motion.div>
           </div>

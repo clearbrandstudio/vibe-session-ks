@@ -50,6 +50,21 @@ function getRoomState(roomID = 'default') {
   return rooms[roomID];
 }
 
+function getRoomPrepDuration(roomID = 'default') {
+  try {
+    const settingsPath = path.join(__dirname, 'settings.json');
+    if (!fs.existsSync(settingsPath)) return 15;
+    const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    if (!allSettings.rooms) {
+      return parseInt(allSettings.prepDuration) || 15;
+    }
+    const settings = allSettings.rooms[roomID] || allSettings.rooms['default'] || {};
+    return parseInt(settings.prepDuration) || 15;
+  } catch (err) {
+    return 15;
+  }
+}
+
 function startPrepCountdown(ioInstance, roomID) {
   const room = getRoomState(roomID);
   if (!room.currentPrep) return;
@@ -125,7 +140,7 @@ app.get('/api/settings', (req, res) => {
   try {
     const settingsPath = path.join(__dirname, 'settings.json');
     if (!fs.existsSync(settingsPath)) {
-      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions', promoText: '' });
+      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions', promoText: '', prepDuration: 15 });
     }
     const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     // If it's a legacy flat file, convert it to room-based
@@ -134,6 +149,7 @@ app.get('/api/settings', (req, res) => {
        if (!legacy.youtubeApiKey || legacy.youtubeApiKey === 'YOUR_YOUTUBE_API_KEY_HERE') {
          legacy.youtubeApiKey = envKey;
        }
+       legacy.prepDuration = parseInt(legacy.prepDuration) || 15;
        res.json(legacy);
        return;
     }
@@ -141,7 +157,7 @@ app.get('/api/settings', (req, res) => {
     const finalKey = allSettings.youtubeApiKey && allSettings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE'
       ? allSettings.youtubeApiKey
       : envKey;
-    res.json({ ...settings, youtubeApiKey: finalKey });
+    res.json({ ...settings, youtubeApiKey: finalKey, prepDuration: settings.prepDuration || 15 });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load settings' });
   }
@@ -150,7 +166,7 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
   const roomID = req.query.room || 'default';
   try {
-    const { youtubeApiKey, businessName, promoText } = req.body;
+    const { youtubeApiKey, businessName, promoText, prepDuration } = req.body;
     const settingsPath = path.join(__dirname, 'settings.json');
     let allSettings = { rooms: {} };
     if (fs.existsSync(settingsPath)) {
@@ -163,7 +179,8 @@ app.post('/api/settings', (req, res) => {
     allSettings.rooms[roomID] = {
       ...allSettings.rooms[roomID],
       businessName: businessName || (allSettings.rooms[roomID]?.businessName || 'Vibe Sessions'),
-      promoText: promoText || (allSettings.rooms[roomID]?.promoText || '')
+      promoText: promoText || (allSettings.rooms[roomID]?.promoText || ''),
+      prepDuration: parseInt(prepDuration) || (allSettings.rooms[roomID]?.prepDuration || 15)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
@@ -281,7 +298,7 @@ io.on('connection', (socket) => {
 
     // If nothing is playing or preparing, auto-promote to prep stage
     if (!room.currentSong && !room.currentPrep) {
-      room.currentPrep = { song: room.queue.shift(), timeLeft: 20 };
+      room.currentPrep = { song: room.queue.shift(), timeLeft: getRoomPrepDuration(roomID) };
       startPrepCountdown(io, roomID);
     } else {
       io.to(roomID).emit('queue:updated', { 
@@ -296,7 +313,7 @@ io.on('connection', (socket) => {
   socket.on('queue:next', () => {
     if (room.queue.length > 0) {
       room.currentSong = null;
-      room.currentPrep = { song: room.queue.shift(), timeLeft: 20 };
+      room.currentPrep = { song: room.queue.shift(), timeLeft: getRoomPrepDuration(roomID) };
       startPrepCountdown(io, roomID);
     } else {
       room.currentSong = null;

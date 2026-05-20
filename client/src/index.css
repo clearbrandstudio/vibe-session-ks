@@ -207,3 +207,22 @@
   position: absolute; width: 100vw; height: 100vh; bottom: -10%; right: -10%;
   background: radial-gradient(circle, rgba(255, 45, 85, 0.05) 0%, transparent 70%);
 }
+
+/* Custom Marquee Animation */
+@keyframes marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.marquee-container {
+  display: flex;
+  overflow: hidden;
+  width: 100%;
+}
+
+.marquee-content {
+  display: flex;
+  white-space: nowrap;
+  animation: marquee 25s linear infinite;
+  will-change: transform;
+}

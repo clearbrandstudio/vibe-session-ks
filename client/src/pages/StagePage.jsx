@@ -369,7 +369,8 @@ const Stinger = ({ current, onComplete }) => {
 };
 
 const Countdown = ({ current, onComplete }) => {
-  const [count, setCount] = useState(15);
+  const [count, setCount] = useState(current.timeLeft || 15);
+  const [totalDuration] = useState(current.timeLeft || 15);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
@@ -386,7 +387,7 @@ const Countdown = ({ current, onComplete }) => {
   }, [count, onComplete]);
 
   const dasharray = 2 * Math.PI * 90;
-  const dashoffset = dasharray - (count / 15) * dasharray;
+  const dashoffset = dasharray - (count / totalDuration) * dasharray;
 
   return (
     <motion.div 
@@ -483,7 +484,7 @@ const NPBar = ({ current, queue = [] }) => {
   );
 }
 
-const PlayingScreen = ({ current, queue = [], onEnded, showHUD }) => {
+const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
   const playerRef = useRef(null);
 
   useEffect(() => {
@@ -578,6 +579,22 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD }) => {
         Next Singer <span className="animate-pulse">&rarr;</span>
       </motion.div>
 
+      {/* Rolling Promotional slogan ticker */}
+      {settings?.promoText && (
+        <div className="fixed bottom-[96px] left-0 w-full z-20 overflow-hidden bg-black/40 border-y border-white/5 backdrop-blur-md py-2.5 shadow-2xl">
+          <div className="marquee-container">
+            <div className="marquee-content flex gap-32 text-[10px] font-syne font-bold uppercase tracking-[0.45em] text-[#D946EF] drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]">
+               <span>{settings.promoText}</span>
+               <span>{settings.promoText}</span>
+               <span>{settings.promoText}</span>
+               <span>{settings.promoText}</span>
+               <span>{settings.promoText}</span>
+               <span>{settings.promoText}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <NPBar current={current} queue={queue} />
     </motion.div>
   );
@@ -606,6 +623,9 @@ export default function StagePage() {
         if (data.currentSong) {
           setCurrent(data.currentSong);
           setStage(ST.PLAYING);
+        } else if (data.currentPrep) {
+          setCurrent({ ...data.currentPrep.song, timeLeft: data.currentPrep.timeLeft });
+          setStage(ST.COUNTDOWN);
         }
       });
 
@@ -619,15 +639,18 @@ export default function StagePage() {
     });
 
     socket.on('song:prep', ({ currentPrep }) => {
-      setCurrent(currentPrep.song);
-      setStage(ST.STINGER);
+      setCurrent({ ...currentPrep.song, timeLeft: currentPrep.timeLeft });
+      setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.STINGER);
     });
 
-    socket.on('state:sync', ({ queue: q, currentSong: cs }) => {
+    socket.on('state:sync', ({ queue: q, currentSong: cs, currentPrep: cp }) => {
        setQueue(q || []);
        if (cs) {
          setCurrent(cs);
          setStage(ST.PLAYING);
+       } else if (cp) {
+         setCurrent({ ...cp.song, timeLeft: cp.timeLeft });
+         setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
        }
     });
 
@@ -739,6 +762,7 @@ export default function StagePage() {
               queue={queue} 
               onEnded={nextSong}
               showHUD={showHUD}
+              settings={settings}
             />
           )}
         </AnimatePresence>
