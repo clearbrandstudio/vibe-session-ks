@@ -1,9 +1,0 @@
-[dotenv@17.3.1] injecting env (2) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
-
-🎤 Karaoke server running!
-   Kiosk (Mobile): http://localhost:3001/kiosk
-   Stage (TV):     http://localhost:3001/stage
-
-[Feed] Populated category: English Classics
-[Feed] Populated category: Latest Pop
-[Feed] Populated category: Top Karaoke Hits

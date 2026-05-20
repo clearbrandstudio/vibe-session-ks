@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Sessions — Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --primary: #8B5CF6;
+            --accent: #D946EF;
+            --bg: #04020a;
+        }
+        body {
+            background: var(--bg);
+            color: #F8F4FF;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+        }
+        .vibe-gradient {
+            background: linear-gradient(135deg, var(--primary), var(--accent), #EC4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .glass {
+            background: rgba(139, 92, 246, 0.03);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(139, 92, 246, 0.15);
+        }
+        .glow-btn {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .glow-btn:hover {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+            transform: translateY(-2px);
+        }
+        @keyframes flow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .mesh {
+            position: fixed;
+            top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
+                        radial-gradient(circle at 70% 70%, rgba(217, 70, 239, 0.08) 0%, transparent 40%);
+            z-index: -1;
+            animation: rotate 60s linear infinite;
+        }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-6">
+    <div class="mesh"></div>
+
+    <div class="glass max-w-lg w-full rounded-[40px] p-10 text-center shadow-2xl relative z-10">
+        <div class="mb-8">
+            <h2 class="font-syne text-[10px] uppercase tracking-[0.4em] text-purple-400/60 mb-2">Internal Tech Console</h2>
+            <h1 class="font-syne text-4xl font-extrabold vibe-gradient mb-1">Vibe Settings</h1>
+            <p class="text-sm text-purple-300/40">Secure API configuration & Sync</p>
+        </div>
+
+        <div class="space-y-6 text-left">
+            <div class="space-y-2">
+                <label class="block text-[10px] uppercase tracking-widest text-purple-400 font-bold ml-1">YouTube API Key</label>
+                <div class="relative group">
+                    <input 
+                        type="password" 
+                        id="apiKey" 
+                        placeholder="Paste your production key here..."
+                        class="w-full bg-black/40 border border-purple-500/20 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:border-purple-500/60 transition-all placeholder:text-purple-300/10"
+                    >
+                    <button 
+                        onmousedown="document.getElementById('apiKey').type='text'"
+                        onmouseup="document.getElementById('apiKey').type='password'"
+                        class="absolute right-4 top-1/2 -translate-y-1/2 opacity-30 hover:opacity-100 transition-opacity"
+                    >
+                        👁️
+                    </button>
+                </div>
+                <p class="text-[9px] text-purple-300/30 px-1 leading-relaxed">
+                    This key allows Vibe Sessions to fetch karaoke videos directly from YouTube with zero delays. 
+                    Keep it private to ensure uninterrupted service.
+                </p>
+            </div>
+
+            <button 
+                onclick="saveSettings()" 
+                id="saveBtn"
+                class="glow-btn w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 font-syne font-bold uppercase tracking-widest text-sm"
+            >
+                Save & Sync Stage
+            </button>
+
+            <div id="status" class="text-center h-4 text-[10px] uppercase font-bold tracking-widest transition-all opacity-0"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-12 pt-8 border-t border-purple-500/10">
+            <a href="/kiosk" class="text-[10px] uppercase tracking-widest text-purple-400/50 hover:text-purple-400 transition-colors">
+                &larr; Return to Kiosk
+            </a>
+        </div>
+    </div>
+
+    <script>
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.youtubeApiKey) {
+                    document.getElementById('apiKey').value = data.youtubeApiKey;
+                }
+            } catch (e) {}
+        }
+
+        async function saveSettings() {
+            const key = document.getElementById('apiKey').value.trim();
+            const btn = document.getElementById('saveBtn');
+            const status = document.getElementById('status');
+
+            if (!key) {
+                showStatus('Missing Key', 'text-red-400');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'SYCNHING...';
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ youtubeApiKey: key })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showStatus('Settings Saved & Synced', 'text-green-400');
+                } else {
+                    showStatus('Sync Failed', 'text-red-400');
+                }
+            } catch (e) {
+                showStatus('Connection Error', 'text-red-400');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Save & Sync Stage';
+            }
+        }
+
+        function showStatus(msg, cls) {
+            const status = document.getElementById('status');
+            status.innerText = msg;
+            status.className = `text-center h-4 text-[10px] uppercase font-bold tracking-widest transition-all ${cls} opacity-100`;
+            setTimeout(() => { status.className += ' opacity-0'; }, 3000);
+        }
+
+        loadSettings();
+    </script>
+</body>
+</html>

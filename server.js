@@ -19,40 +19,72 @@ const io = new Server(server, {
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'client', 'dist')));
 
 // ──────────────────────────────────────────────
-// In-memory queue state
+// Static Assets with explicit MIME enforcement
 // ──────────────────────────────────────────────
-let queue = [];          // { id, videoId, title, thumbnail, channel, singerName, addedAt }
-let currentSong = null;  // same shape, currently playing
-let currentPrep = null;  // { song, timeLeft }
-let prepTimer = null;
+app.use(express.static(path.join(__dirname, 'client', 'dist'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
+    if (path.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
+  }
+}));
 
-function startPrepCountdown(ioInstance) {
-  if (!currentPrep) return;
-  console.log(`[Queue] Preparing: "${currentPrep.song.title}" for ${currentPrep.song.singerName}`);
-  ioInstance.emit('song:prep', { currentPrep, queue });
+// API Routes prefix-check to avoid fallback overlap
+const isApiRequest = (req) => req.url.startsWith('/api') || req.url.startsWith('/socket.io');
 
-  if (prepTimer) clearInterval(prepTimer);
-  prepTimer = setInterval(() => {
-    currentPrep.timeLeft -= 1;
+// ──────────────────────────────────────────────
+// Multi-Tenant State Management
+// ──────────────────────────────────────────────
+const rooms = {}; // { roomID: { queue, currentSong, currentPrep, prepTimer } }
+
+function getRoomState(roomID = 'default') {
+  if (!rooms[roomID]) {
+    rooms[roomID] = {
+      queue: [],
+      currentSong: null,
+      currentPrep: null,
+      prepTimer: null
+    };
+  }
+  return rooms[roomID];
+}
+
+function startPrepCountdown(ioInstance, roomID) {
+  const room = getRoomState(roomID);
+  if (!room.currentPrep) return;
+  
+  console.log(`[Queue - ${roomID}] Preparing: "${room.currentPrep.song.title}" for ${room.currentPrep.song.singerName}`);
+  ioInstance.to(roomID).emit('song:prep', { 
+    currentPrep: room.currentPrep, 
+    queue: room.queue 
+  });
+
+  if (room.prepTimer) clearInterval(room.prepTimer);
+  room.prepTimer = setInterval(() => {
+    room.currentPrep.timeLeft -= 1;
     
-    if (currentPrep.timeLeft <= 0) {
-      clearInterval(prepTimer);
-      prepTimer = null;
-      currentSong = currentPrep.song;
-      currentPrep = null;
-      console.log(`[Queue] Now playing: "${currentSong.title}" for ${currentSong.singerName}`);
-      ioInstance.emit('song:play', { currentSong, queue });
+    if (room.currentPrep.timeLeft <= 0) {
+      clearInterval(room.prepTimer);
+      room.prepTimer = null;
+      room.currentSong = room.currentPrep.song;
+      room.currentPrep = null;
+      console.log(`[Queue - ${roomID}] Now playing: "${room.currentSong.title}" for ${room.currentSong.singerName}`);
+      ioInstance.to(roomID).emit('song:play', { 
+        currentSong: room.currentSong, 
+        queue: room.queue 
+      });
     } else {
-      ioInstance.emit('song:prep', { currentPrep, queue });
+      ioInstance.to(roomID).emit('song:prep', { 
+        currentPrep: room.currentPrep, 
+        queue: room.queue 
+      });
     }
   }, 1000);
 }
 
 // ──────────────────────────────────────────────
-// REST – Dynamic Feed (Netflix style)
+// REST – Dynamic Feed (Netflix style) – Shared for now
 // ──────────────────────────────────────────────
 const feedData = {
   categories: [
@@ -85,16 +117,60 @@ app.get('/api/feed', (req, res) => {
 });
 
 // ──────────────────────────────────────────────
-// REST – Settings
+// REST – Settings (Per-Room)
 // ──────────────────────────────────────────────
 app.get('/api/settings', (req, res) => {
+  const roomID = req.query.room || 'default';
   try {
-    const settings = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings.json'), 'utf8'))
-    res.json(settings)
+    const settingsPath = path.join(__dirname, 'settings.json');
+    if (!fs.existsSync(settingsPath)) {
+      return res.json({ youtubeApiKey: '', businessName: 'Vibe Sessions', promoText: '' });
+    }
+    const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    // If it's a legacy flat file, convert it to room-based
+    if (!allSettings.rooms) {
+       const legacy = { ...allSettings };
+       res.json(legacy);
+       return;
+    }
+    const settings = allSettings.rooms[roomID] || allSettings.rooms['default'] || {};
+    res.json({ ...settings, youtubeApiKey: allSettings.youtubeApiKey });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to load settings' })
+    res.status(500).json({ error: 'Failed to load settings' });
   }
-})
+});
+
+app.post('/api/settings', (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const { youtubeApiKey, businessName, promoText } = req.body;
+    const settingsPath = path.join(__dirname, 'settings.json');
+    let allSettings = { rooms: {} };
+    if (fs.existsSync(settingsPath)) {
+      allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (!allSettings.rooms) allSettings = { youtubeApiKey: allSettings.youtubeApiKey, rooms: { 'default': allSettings } };
+    }
+    
+    if (youtubeApiKey) allSettings.youtubeApiKey = youtubeApiKey;
+    
+    allSettings.rooms[roomID] = {
+      ...allSettings.rooms[roomID],
+      businessName: businessName || (allSettings.rooms[roomID]?.businessName || 'Vibe Sessions'),
+      promoText: promoText || (allSettings.rooms[roomID]?.promoText || '')
+    };
+    
+    fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
+    console.log(`[Settings] Updated Config for Room: ${roomID}`);
+    
+    // Broadcast to that specifically connected room
+    io.to(roomID).emit('settings:updated', allSettings.rooms[roomID]);
+    
+    res.json({ success: true, message: 'Settings saved and synced!', settings: allSettings.rooms[roomID] });
+  } catch (err) {
+    console.error('[Settings] Save error:', err);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
 
 // ──────────────────────────────────────────────
 // REST – YouTube search proxy (yt-search)
@@ -106,7 +182,32 @@ app.get('/api/search', async (req, res) => {
   }
 
   try {
-    // Append 'karaoke' to ensure we get karaoke versions
+    const settingsPath = path.join(__dirname, 'settings.json');
+    let apiKey = null;
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      apiKey = settings.youtubeApiKey;
+    }
+    
+    // Official API Fallback
+    if (apiKey && apiKey !== 'YOUR_YOUTUBE_API_KEY_HERE' && apiKey.trim().length > 10) {
+      console.log(`[Search] Using Official YouTube API for: "${q}"`);
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q + ' karaoke')}&type=video&maxResults=15&key=${apiKey}`);
+      const data = await response.json();
+      
+      if (data.items) {
+        const items = data.items.map(v => ({
+          videoId: v.id.videoId,
+          title: v.snippet.title,
+          channel: v.snippet.channelTitle,
+          thumbnail: v.snippet.thumbnails.high.url
+        }));
+        return res.json({ items });
+      }
+    }
+
+    // Default to yt-search (scraped) - The "Intelligent Fallback"
+    console.log(`[Search] Using Scrap-based Search (yt-search) for: "${q}" (No valid API Key detected)`);
     const r = await ytSearch(q + ' karaoke');
     const items = r.videos.slice(0, 15).map((v) => ({
       videoId: v.videoId,
@@ -125,17 +226,27 @@ app.get('/api/search', async (req, res) => {
 // REST – Queue state (for initial page load)
 // ──────────────────────────────────────────────
 app.get('/api/state', (req, res) => {
-  res.json({ queue, currentSong, currentPrep });
+  const roomID = req.query.room || 'default';
+  const room = getRoomState(roomID);
+  res.json({ queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
 });
 
 // ──────────────────────────────────────────────
 // Socket.io
 // ──────────────────────────────────────────────
 io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
+  const roomID = socket.handshake.query.room || 'default';
+  console.log(`[Socket] Client connected: ${socket.id} to room: ${roomID}`);
+  socket.join(roomID);
+
+  const room = getRoomState(roomID);
 
   // Send current state immediately on connect
-  socket.emit('state:sync', { queue, currentSong, currentPrep });
+  socket.emit('state:sync', { 
+    queue: room.queue, 
+    currentSong: room.currentSong, 
+    currentPrep: room.currentPrep 
+  });
 
   // ── Add song to queue
   socket.on('queue:add', (data) => {
@@ -152,44 +263,52 @@ io.on('connection', (socket) => {
       addedAt: new Date().toISOString(),
     };
 
-    queue.push(entry);
-    console.log(`[Queue] Added: "${title}" for ${singerName}`);
+    room.queue.push(entry);
+    console.log(`[Queue - ${roomID}] Added: "${title}" for ${singerName}`);
 
     // If nothing is playing or preparing, auto-promote to prep stage
-    if (!currentSong && !currentPrep) {
-      currentPrep = { song: queue.shift(), timeLeft: 20 };
-      startPrepCountdown(io);
+    if (!room.currentSong && !room.currentPrep) {
+      room.currentPrep = { song: room.queue.shift(), timeLeft: 20 };
+      startPrepCountdown(io, roomID);
     } else {
-      io.emit('queue:updated', { queue, currentSong, currentPrep });
+      io.to(roomID).emit('queue:updated', { 
+        queue: room.queue, 
+        currentSong: room.currentSong, 
+        currentPrep: room.currentPrep 
+      });
     }
   });
 
   // ── Stage requests the next song (song ended naturally or skipped)
   socket.on('queue:next', () => {
-    if (queue.length > 0) {
-      currentSong = null;
-      currentPrep = { song: queue.shift(), timeLeft: 20 };
-      startPrepCountdown(io);
+    if (room.queue.length > 0) {
+      room.currentSong = null;
+      room.currentPrep = { song: room.queue.shift(), timeLeft: 20 };
+      startPrepCountdown(io, roomID);
     } else {
-      currentSong = null;
-      currentPrep = null;
-      if (prepTimer) clearInterval(prepTimer);
-      console.log('[Queue] Queue empty — going idle');
-      io.emit('song:play', { currentSong: null, queue: [] });
+      room.currentSong = null;
+      room.currentPrep = null;
+      if (room.prepTimer) clearInterval(room.prepTimer);
+      console.log(`[Queue - ${roomID}] Queue empty — going idle`);
+      io.to(roomID).emit('song:play', { currentSong: null, queue: [] });
     }
   });
 
   // ── Stage or Kiosk requests to skip the prep timer (impatient!)
   socket.on('queue:skip_prep', () => {
-    if (currentPrep && prepTimer) {
-      currentPrep.timeLeft = 0; // The interval will catch it immediately
+    if (room.currentPrep && room.prepTimer) {
+      room.currentPrep.timeLeft = 0; // The interval will catch it immediately
     }
   });
 
   // ── Remove a specific item from queue (by id)
   socket.on('queue:remove', ({ id }) => {
-    queue = queue.filter((item) => item.id !== id);
-    io.emit('queue:updated', { queue, currentSong, currentPrep });
+    room.queue = room.queue.filter((item) => item.id !== id);
+    io.to(roomID).emit('queue:updated', { 
+      queue: room.queue, 
+      currentSong: room.currentSong, 
+      currentPrep: room.currentPrep 
+    });
   });
 
   socket.on('disconnect', () => {
@@ -200,6 +319,10 @@ io.on('connection', (socket) => {
 // ──────────────────────────────────────────────
 // Frontend Fallback (React Router)
 // ──────────────────────────────────────────────
+app.get('/settings', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client', 'settings.html'));
+});
+
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
 });
