@@ -319,34 +319,46 @@ export default function KioskPage() {
 
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [pendingSong, setPendingSong] = useState(null);
+  // modalName is SEPARATE from singerName (sidebar) so each customer always enters their own name
+  const [modalName, setModalName] = useState("");
+  const modalNameRef = useRef(null);
 
-  const queueSongToServer = (song) => {
-    if (serverQueue.some(s => s.videoId === song.videoId && s.singerName === singerName.trim())) {
+  const queueSongToServer = (song, overrideName) => {
+    const nameToUse = (overrideName || singerName || "").trim();
+    if (!nameToUse) return;
+    if (serverQueue.some(s => s.videoId === song.videoId && s.singerName === nameToUse)) {
       showToast("Already queued this song under your name!");
       return;
     }
-    
     socket.emit("queue:add", {
       ...song,
-      singerName: singerName.trim()
+      singerName: nameToUse
     });
-
     setAddedSong({ song, position: serverQueue.length + 1 });
     showToast(`Reserved "${song.title}"!`);
   };
 
   const handleSongClick = (song) => {
     setPendingSong(song);
+    setModalName(singerName || ""); // pre-fill with sidebar name if available
     setShowNamePrompt(true);
+  };
+
+  const closeNamePrompt = () => {
+    setShowNamePrompt(false);
+    setPendingSong(null);
+    setModalName("");
   };
 
   const handleNameSubmit = (e) => {
     e.preventDefault();
-    if (singerName.trim() && pendingSong) {
-      queueSongToServer(pendingSong);
-      setPendingSong(null);
-      setShowNamePrompt(false);
-    } else if (!singerName.trim()) {
+    const trimmed = modalName.trim();
+    if (trimmed && pendingSong) {
+      // Also sync back to the sidebar name field so it persists for next song
+      setSingerName(trimmed);
+      queueSongToServer(pendingSong, trimmed);
+      closeNamePrompt();
+    } else {
       setShakeInput(true);
       setTimeout(() => setShakeInput(false), 400);
     }
@@ -646,11 +658,18 @@ export default function KioskPage() {
       </div>
 
       {/* MODALS */}
+
+      {/* ── Remove Song Modal ── */}
       <AnimatePresence>
         {cancelSong && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md" onClick={() => setCancelSong(null)}>
+          <motion.div
+            key="cancel-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md"
+            onClick={() => setCancelSong(null)}
+          >
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
               className="bg-[#0c051a]/97 border border-[#d946ef]/45 rounded-3xl p-8 max-w-[340px] w-full shadow-[0_0_60px_rgba(217,70,239,0.2)]"
               onClick={e => e.stopPropagation()}
             >
@@ -661,50 +680,75 @@ export default function KioskPage() {
                   <button onClick={() => removeSongFromServer(cancelSong.id)} className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#EC4899] to-[#D946EF] text-white text-[10px] font-bold uppercase tracking-widest">Remove</button>
                </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
-        
+      </AnimatePresence>
+
+      {/* ── Song Reserved Confirmation Modal ── */}
+      <AnimatePresence>
         {addedSong && (
-           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md" onClick={() => setAddedSong(null)}>
-             <motion.div 
-               initial={{ opacity: 0, scale: 0.9, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
-               className="bg-[#0c051a]/97 border border-[#d946ef]/45 rounded-[40px] p-10 max-w-[360px] w-full shadow-2xl text-center"
-               onClick={e => e.stopPropagation()}
-             >
-                <div className="w-20 h-20 rounded-[28px] bg-[#8b5cf6]/12 border border-[#8b5cf6]/24 flex items-center justify-center mx-auto mb-8">
-                   <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.2 }} className="text-4xl text-[#A78BFA]">✓</motion.span>
-                </div>
-                <h2 className="LuxeFont text-3xl mb-3 text-gradient-broadcast">Success!</h2>
-                <p className="text-[13px] text-[#c8b9e6]/60 mb-10 px-4 leading-relaxed">Song reserved at position <span className="text-[#D946EF] font-bold">#{addedSong.position}</span> in the stage queue.</p>
-                <button onClick={() => setAddedSong(null)} className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg">Keep Searching</button>
-             </motion.div>
-           </div>
-         )}
-        {showNamePrompt && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl" onClick={() => { setShowNamePrompt(false); setPendingSong(null); }}>
+          <motion.div
+            key="added-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/85 backdrop-blur-md"
+            onClick={() => setAddedSong(null)}
+          >
             <motion.div 
-              initial={{ opacity: 0, y: 30, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9 }}
+              className="bg-[#0c051a]/97 border border-[#d946ef]/45 rounded-[40px] p-10 max-w-[360px] w-full shadow-2xl text-center"
+              onClick={e => e.stopPropagation()}
+            >
+               <div className="w-20 h-20 rounded-[28px] bg-[#8b5cf6]/12 border border-[#8b5cf6]/24 flex items-center justify-center mx-auto mb-8">
+                  <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.2 }} className="text-4xl text-[#A78BFA]">✓</motion.span>
+               </div>
+               <h2 className="LuxeFont text-3xl mb-3 text-gradient-broadcast">Success!</h2>
+               <p className="text-[13px] text-[#c8b9e6]/60 mb-10 px-4 leading-relaxed">Song reserved at position <span className="text-[#D946EF] font-bold">#{addedSong.position}</span> in the stage queue.</p>
+               <button onClick={() => setAddedSong(null)} className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg">Keep Searching</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Name Prompt Modal — always shown when song is clicked ── */}
+      <AnimatePresence>
+        {showNamePrompt && (
+          <motion.div
+            key="name-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
+            onClick={closeNamePrompt}
+          >
+            <motion.div 
+              initial={{ y: 30, scale: 0.95 }} animate={{ y: 0, scale: 1 }} exit={{ scale: 0.95 }}
               className="bg-[#0c051a]/97 border border-[#d946ef]/60 rounded-[40px] p-10 max-w-[400px] w-full shadow-[0_0_80px_rgba(217,70,239,0.25)] text-center relative"
               onClick={e => e.stopPropagation()}
             >
-               <button onClick={() => { setShowNamePrompt(false); setPendingSong(null); }} className="absolute top-6 right-6 text-[#8b5cf6]/35 hover:text-white transition-all">✕</button>
+               <button onClick={closeNamePrompt} className="absolute top-6 right-6 text-[#8b5cf6]/35 hover:text-white transition-all text-xl">✕</button>
                
                <div className="w-20 h-20 rounded-[28px] bg-gradient-to-br from-[#8B5CF6] to-[#D946EF] flex items-center justify-center mx-auto mb-8 shadow-lg shadow-[#8B5CF6]/20">
                  <span className="text-4xl text-white">🎤</span>
                </div>
                
                <h2 className="LuxeFont text-3xl mb-2 text-gradient-broadcast">Who's Singing?</h2>
-               <p className="text-[13px] text-[#c8b9e6]/60 mb-8 leading-relaxed">We need your name to show it on the <br/>stage animations for <span className="text-[#D946EF] font-bold">"{pendingSong?.title}"</span></p>
+               <p className="text-[13px] text-[#c8b9e6]/60 mb-8 leading-relaxed">
+                 Enter your name for the stage screen<br/>
+                 <span className="text-[#D946EF] font-bold">&#34;{pendingSong?.title}&#34;</span>
+               </p>
                
                <form onSubmit={handleNameSubmit} className="space-y-6">
                  <div className={`relative ${shakeInput ? 'animate-[shake_0.4s_ease]' : ''}`}>
                     <input 
                       autoFocus
+                      ref={modalNameRef}
                       className="w-full bg-[#0c051a] border border-[#8b5cf6]/35 text-white rounded-2xl px-6 py-4 text-base text-center outline-none focus:border-[#d946ef] transition-all placeholder:text-[#7c6f9a]/40"
                       placeholder="Enter Your Name..."
-                      value={singerName}
-                      onChange={(e) => setSingerName(e.target.value)}
+                      value={modalName}
+                      onChange={(e) => setModalName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Escape' && closeNamePrompt()}
                     />
+                    {!modalName && (
+                      <p className="text-[10px] text-[#ec4899]/70 mt-2">Name is required to add to the queue</p>
+                    )}
                  </div>
                  <button 
                    type="submit"
@@ -714,13 +758,21 @@ export default function KioskPage() {
                  </button>
                </form>
             </motion.div>
-          </div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
+      {/* ── Settings Modal ── */}
+      <AnimatePresence>
         {showSettings && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-3xl" onClick={() => setShowSettings(false)}>
+          <motion.div
+            key="settings-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-3xl"
+            onClick={() => setShowSettings(false)}
+          >
             <motion.div 
-              initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
+              initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }}
               className="bg-[#0c051a]/97 border border-[#8b5cf6]/18 rounded-[32px] p-8 max-w-[420px] w-full shadow-2xl relative overflow-y-auto max-h-[90vh]"
               onClick={e => e.stopPropagation()}
             >
@@ -787,12 +839,21 @@ export default function KioskPage() {
                  </button>
                </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ── Stop Current Song Modal ── */}
+      <AnimatePresence>
         {showCancelCurrentModal && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl" onClick={() => setShowCancelCurrentModal(false)}>
+          <motion.div
+            key="stop-modal"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
+            onClick={() => setShowCancelCurrentModal(false)}
+          >
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
               className="bg-[#0c051a]/97 border border-[#ec4899]/60 rounded-[32px] p-8 max-w-[360px] w-full shadow-[0_0_60px_rgba(236,72,153,0.25)] text-center relative"
               onClick={e => e.stopPropagation()}
             >
@@ -817,7 +878,7 @@ export default function KioskPage() {
                   </button>
                </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
