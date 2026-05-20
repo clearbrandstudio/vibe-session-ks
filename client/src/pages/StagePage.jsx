@@ -516,14 +516,19 @@ const NPBar = ({ current, queue = [] }) => {
   );
 }
 
-const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
+const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD, settings }) => {
   if (!current || !current.videoId) return null;
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
+  const onPlaybackFailedRef = useRef(onPlaybackFailed);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
   }, [onEnded]);
+
+  useEffect(() => {
+    onPlaybackFailedRef.current = onPlaybackFailed;
+  }, [onPlaybackFailed]);
 
   const [isIntroActive, setIsIntroActive] = useState(true);
 
@@ -563,6 +568,12 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
           onStateChange: (e) => {
              if (e.data === 0 && onEndedRef.current) {
                onEndedRef.current(); // Song ended
+             }
+          },
+          onError: (e) => {
+             console.warn('[YouTube Player] Playback error:', e.data);
+             if ([5, 100, 101, 150].includes(e.data) && onPlaybackFailedRef.current) {
+               onPlaybackFailedRef.current(current.videoId);
              }
           }
         }
@@ -723,6 +734,12 @@ const PromoPlayingScreen = ({ video, onEnded, settings }) => {
              if (e.data === 0 && onEndedRef.current) {
                onEndedRef.current();
              }
+          },
+          onError: (e) => {
+             console.warn('[YouTube Promo Player] Cover error:', e.data);
+             if (onEndedRef.current) {
+               onEndedRef.current();
+             }
           }
         }
       });
@@ -796,6 +813,16 @@ export default function StagePage() {
   const [promoIndex, setPromoIndex] = useState(0);
   const inactivityTimerRef = useRef(null);
   const lastPrepIdRef = useRef(null);
+
+  const [failedVideoIds, setFailedVideoIds] = useState(new Set());
+
+  // Reset failed video list on song transition
+  useEffect(() => {
+    if (realCurrent?.id) {
+      console.log(`[Stage] Resetting failed video list for new song ID: ${realCurrent.id}`);
+      setFailedVideoIds(new Set());
+    }
+  }, [realCurrent?.id]);
 
   // Sync Logic (Socket.io)
 
@@ -1054,6 +1081,64 @@ export default function StagePage() {
     }
   }, [isDemoMode]);
 
+  const handlePlaybackFailed = useCallback(async (brokenVideoId) => {
+    if (!current) return;
+    console.warn(`[Stage] Video playback failed for ID: ${brokenVideoId}. Attempting auto-recovery...`);
+    
+    // Add to failed video ids set
+    setFailedVideoIds(prev => {
+      const next = new Set(prev);
+      next.add(brokenVideoId);
+      return next;
+    });
+
+    const songTitle = current.title;
+    const songArtist = current.artist;
+    const searchQuery = `${songTitle} ${songArtist}`;
+
+    try {
+      console.log(`[Stage] Searching alternatives for query: "${searchQuery}"`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      
+      if (data && Array.isArray(data.items)) {
+        const currentFailed = new Set(failedVideoIds);
+        currentFailed.add(brokenVideoId);
+
+        const alternative = data.items.find(item => {
+          const vId = item.videoId;
+          return vId && vId !== brokenVideoId && !currentFailed.has(vId);
+        });
+
+        if (alternative) {
+          const alternativeVideoId = alternative.videoId;
+          console.log(`[Stage] Found working alternative video: "${alternative.title}" with ID: ${alternativeVideoId}`);
+          
+          const params = new URLSearchParams(window.location.search);
+          const roomID = params.get('room') || 'default';
+          
+          const updateRes = await fetch(`/api/queue/update-current-video?room=${roomID}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: alternativeVideoId })
+          });
+          
+          const updateData = await updateRes.json();
+          if (updateData.success) {
+            console.log(`[Stage] Successfully updated server currentSong to alternative: ${alternativeVideoId}`);
+            return; // Server will broadcast state sync which triggers player re-mount
+          }
+        }
+      }
+      
+      console.warn('[Stage] No viable alternative video found. Skipping to the next song in queue...');
+      nextSong();
+    } catch (err) {
+      console.error('[Stage] Failed to recover playback:', err);
+      nextSong();
+    }
+  }, [current, failedVideoIds, nextSong]);
+
   if (!hasStarted) {
     return (
       <div className="fixed inset-0 bg-[#04020a] flex items-center justify-center text-white">
@@ -1124,6 +1209,7 @@ export default function StagePage() {
               current={current} 
               queue={queue} 
               onEnded={nextSong}
+              onPlaybackFailed={handlePlaybackFailed}
               showHUD={showHUD}
               settings={settings}
             />

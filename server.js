@@ -385,6 +385,29 @@ app.post('/api/queue/reorder', (req, res) => {
   res.json({ success: true, queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
 });
 
+// REST – HTTP fallback for queue:update-current-video (self-healing recovery)
+app.post('/api/queue/update-current-video', (req, res) => {
+  const roomID = req.query.room || req.body.room || 'default';
+  const { videoId } = req.body;
+  if (!videoId) {
+    return res.status(400).json({ error: 'videoId is required' });
+  }
+
+  const room = getRoomState(roomID);
+  if (room.currentSong) {
+    console.log(`[Queue HTTP - ${roomID}] Swapping restricted videoId from ${room.currentSong.videoId} to ${videoId}`);
+    room.currentSong.videoId = videoId;
+    io.to(roomID).emit('song:play', { currentSong: room.currentSong, queue: room.queue });
+    io.to(roomID).emit('queue:updated', {
+      queue: room.queue,
+      currentSong: room.currentSong,
+      currentPrep: room.currentPrep
+    });
+  }
+
+  res.json({ success: true, currentSong: room.currentSong });
+});
+
 
 // ──────────────────────────────────────────────
 // Socket.io
@@ -476,6 +499,21 @@ io.on('connection', (socket) => {
       currentSong: room.currentSong, 
       currentPrep: room.currentPrep 
     });
+  });
+
+  // ── Stage requests to update/swap the current videoId (self-healing recovery)
+  socket.on('queue:update_current_video', ({ videoId }) => {
+    if (!videoId) return;
+    if (room.currentSong) {
+      console.log(`[Queue Socket - ${roomID}] Swapping restricted videoId from ${room.currentSong.videoId} to ${videoId}`);
+      room.currentSong.videoId = videoId;
+      io.to(roomID).emit('song:play', { currentSong: room.currentSong, queue: room.queue });
+      io.to(roomID).emit('queue:updated', { 
+        queue: room.queue, 
+        currentSong: room.currentSong, 
+        currentPrep: room.currentPrep 
+      });
+    }
   });
 
   socket.on('disconnect', () => {
