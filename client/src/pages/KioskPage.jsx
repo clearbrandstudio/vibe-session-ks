@@ -206,6 +206,105 @@ const QueueItem = ({ song, index, onCancel }) => {
   );
 };
 
+// ─── QUEUE SIDEBAR CONTENT (shared between desktop sidebar and mobile drawer) ──
+const QueueSidebarContent = ({
+  serverQueue, currentSong, currentPrep, singerName, setSingerName,
+  singerRef, shakeInput, handleReorder, setCancelSong, setShowCancelCurrentModal
+}) => {
+  const activePerformer = currentSong || currentPrep?.song || null;
+  const isPrepping = !currentSong && !!currentPrep;
+
+  return (
+    <>
+      {/* Name input */}
+      <div className="p-4 border-b border-[#8b5cf6]/18 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="font-syne text-[9px] font-bold uppercase tracking-[0.35em] text-[#8B5CF6]">Your Name</span>
+          <span className="text-[8px] text-[#8b5cf6]/40 uppercase font-bold">
+            {serverQueue.length + (currentPrep ? 1 : 0) + (currentSong ? 1 : 0)} total
+          </span>
+        </div>
+        <div className={`relative ${shakeInput ? 'animate-[shake_0.3s_ease]' : ''}`}>
+          <input 
+            ref={singerRef}
+            className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 text-white placeholder-[#7c6f9a]/40 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#d946ef] transition-all"
+            placeholder="Your Name (e.g. Sam S.)"
+            value={singerName}
+            onChange={(e) => setSingerName(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Now Performing / Getting Ready */}
+      <div className="p-4 border-b border-[#8b5cf6]/18 bg-white/[0.03]">
+        <div className="flex items-center gap-2 font-syne text-[9px] font-bold uppercase tracking-[0.4em] mb-3">
+          {isPrepping ? (
+            <span className="text-[#8b5cf6] animate-pulse">⏳ Getting Ready</span>
+          ) : (
+            <span className="text-[#D946EF]">🎤 Now Performing</span>
+          )}
+        </div>
+        {activePerformer ? (
+          <div className="flex items-center gap-3 animate-[fadeIn_0.5s_ease]">
+            {currentPrep?.song?.thumbnail || currentSong?.thumbnail ? (
+              <div className="w-10 h-7 rounded overflow-hidden border border-[#8b5cf6]/20 shrink-0">
+                <img src={(currentSong || currentPrep?.song)?.thumbnail} className="w-full h-full object-cover" alt="" />
+              </div>
+            ) : (
+              <div className="w-10 h-7 rounded bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 flex items-center justify-center text-xs shrink-0">
+                {isPrepping ? '⏳' : '🎤'}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold truncate">{activePerformer.title}</div>
+              <div className="text-[9px] text-[#7c6f9a] truncate">{activePerformer.singerName}</div>
+              {isPrepping && currentPrep?.timeLeft > 0 && (
+                <div className="text-[8px] text-[#8b5cf6]/60 mt-0.5">{currentPrep.timeLeft}s until stage...</div>
+              )}
+            </div>
+            {currentSong && (
+              <button
+                onClick={() => setShowCancelCurrentModal(true)}
+                className="px-2 py-1 rounded-full bg-[#ec4899]/15 text-[#ec4899] hover:bg-[#ec4899]/25 text-[8px] font-syne font-bold uppercase tracking-wider transition-all shrink-0"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="text-[10px] text-[#7c6f9a]/30 italic text-center py-2 uppercase tracking-tighter">No live performer</div>
+        )}
+      </div>
+
+      {/* Queue list */}
+      {serverQueue.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center gap-3 opacity-20">
+          <span className="text-3xl">🎶</span>
+          <p className="text-[11px] text-center font-syne uppercase tracking-wider">
+            {currentPrep || currentSong ? 'Next up: empty' : 'Queue is Empty'}
+          </p>
+        </div>
+      ) : (
+        <Reorder.Group 
+          values={serverQueue} 
+          onReorder={handleReorder} 
+          className="flex-1 overflow-y-auto p-3 space-y-2"
+          axis="y"
+        >
+          {serverQueue.map((song, i) => (
+            <QueueItem key={song.id} song={song} index={i} onCancel={setCancelSong} />
+          ))}
+        </Reorder.Group>
+      )}
+
+      <div className="p-4 border-t border-[#8b5cf6]/18 shrink-0 text-center bg-[#0c051a]/40">
+        <p className="text-[9px] font-syne font-bold uppercase tracking-wider text-[#c8b9e6]/40">Tap a song to reserve your spot</p>
+        <p className="text-[8px] text-[#7c6f9a]/50 italic mt-1">Syncs instantly to the stage screen.</p>
+      </div>
+    </>
+  );
+};
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 export default function KioskPage() {
@@ -235,6 +334,7 @@ export default function KioskPage() {
   const [tempPrepDuration, setTempPrepDuration] = useState(15);
 
   const [showCancelCurrentModal, setShowCancelCurrentModal] = useState(false);
+  const [showQueueDrawer, setShowQueueDrawer] = useState(false); // mobile queue drawer
 
   // Server state sync
   const [serverQueue, setServerQueue] = useState([]);
@@ -279,21 +379,37 @@ export default function KioskPage() {
     // Socket listeners
     const onSync = ({ queue, currentSong, currentPrep }) => {
       setServerQueue(queue || []);
-      setCurrentSong(currentSong);
-      setCurrentPrep(currentPrep);
+      setCurrentSong(currentSong || null);
+      setCurrentPrep(currentPrep || null);
     };
     const onUpdate = ({ queue, currentSong, currentPrep }) => {
       setServerQueue(queue || []);
-      setCurrentSong(currentSong);
-      setCurrentPrep(currentPrep);
+      setCurrentSong(currentSong || null);
+      setCurrentPrep(currentPrep || null);
+    };
+    // song:prep fires every second from server — update currentPrep
+    const onSongPrep = ({ currentPrep: cp, queue: q }) => {
+      setCurrentPrep(cp || null);
+      if (q) setServerQueue(q);
+      setCurrentSong(null);
+    };
+    // song:play fires when countdown hits zero — update currentSong
+    const onSongPlay = ({ currentSong: cs, queue: q }) => {
+      setCurrentSong(cs || null);
+      setCurrentPrep(null);
+      if (q) setServerQueue(q || []);
     };
 
     socket.on("state:sync", onSync);
     socket.on("queue:updated", onUpdate);
+    socket.on("song:prep", onSongPrep);
+    socket.on("song:play", onSongPlay);
 
     return () => {
       socket.off("state:sync", onSync);
       socket.off("queue:updated", onUpdate);
+      socket.off("song:prep", onSongPrep);
+      socket.off("song:play", onSongPlay);
       socket.off("settings:updated", onSettingsUpdated);
     };
   }, []);
@@ -410,19 +526,19 @@ export default function KioskPage() {
       <Atmo />
       <Particles />
 
-      {/* NAV BAR */}
-      <nav className="relative z-[100] flex items-center gap-4 px-6 py-3 border-b border-[#8b5cf6]/18 bg-[#040202]/88 backdrop-blur-2xl">
-        <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-sm font-bold tracking-[0.3em] uppercase animate-[glow_3s_infinite] shrink-0">
+      {/* ── NAV BAR ── */}
+      <nav className="relative z-[100] flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-2 sm:py-3 border-b border-[#8b5cf6]/18 bg-[#040202]/88 backdrop-blur-2xl shrink-0">
+        {/* Logo */}
+        <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-xs sm:text-sm font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase shrink-0">
           {businessName || 'Vibe Sessions'}
         </div>
-        <div className="flex-1" />
-        
+
         {/* Search Bar */}
-        <div className="flex-1 max-w-[520px] relative">
-          <div className={`flex items-center bg-[#8b5cf6]/9 border rounded-full px-4 py-1.5 transition-all ${focused ? 'border-[#d946ef]/45 ring-4 ring-[#d946ef]/10' : 'border-[#8b5cf6]/18'}`}>
-            <span className="opacity-50 mr-2">🔍</span>
+        <div className="flex-1 relative min-w-0">
+          <div className={`flex items-center bg-[#8b5cf6]/9 border rounded-full px-3 py-1.5 transition-all ${focused ? 'border-[#d946ef]/45 ring-2 ring-[#d946ef]/10' : 'border-[#8b5cf6]/18'}`}>
+            <span className="opacity-50 mr-2 text-sm">🔍</span>
             <input 
-              className="bg-transparent border-none outline-none flex-1 text-sm text-[#F8F4FF]"
+              className="bg-transparent border-none outline-none flex-1 text-xs sm:text-sm text-[#F8F4FF] min-w-0"
               placeholder="Search songs, artists..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
@@ -430,14 +546,9 @@ export default function KioskPage() {
               onBlur={() => { setFocused(false); setTimeout(() => setShowSugg(false), 200); }}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchValue)}
             />
-            {/* Lang Badge */}
-            <div className="flex items-center gap-1.5 bg-[#8b5cf6]/15 border border-[#8b5cf6]/25 rounded-full px-2 py-1 cursor-pointer shrink-0">
-               <div className="w-4 h-4 rounded-full overflow-hidden" dangerouslySetInnerHTML={{ __html: activeLang === 'all' ? '🌐' : FLAG_SVG[activeLang] }} />
-               <span className="text-[10px] font-syne font-bold uppercase tracking-wider">{LANGUAGES.find(l => l.id === activeLang)?.label}</span>
-            </div>
             <button 
               onClick={() => handleSearch(searchValue)}
-              className="ml-2 bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[10px] font-bold uppercase px-4 py-1.5 rounded-full shadow-lg"
+              className="ml-1 sm:ml-2 bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[9px] sm:text-[10px] font-bold uppercase px-2 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-lg shrink-0"
             >
               Search
             </button>
@@ -448,7 +559,7 @@ export default function KioskPage() {
             {showSugg && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                className="absolute top-full left-0 right-0 mt-3 bg-[#0c061a]/97 border border-[#d946ef]/45 rounded-[18px] backdrop-blur-3xl shadow-2xl p-4 overflow-hidden"
+                className="absolute top-full left-0 right-0 mt-3 bg-[#0c061a]/97 border border-[#d946ef]/45 rounded-[18px] backdrop-blur-3xl shadow-2xl p-4 overflow-hidden z-50"
               >
                 <div className="text-[9px] font-syne font-bold uppercase tracking-[0.35em] text-[#8b5cf6]/35 mb-2">Trending</div>
                 <div className="flex flex-wrap gap-2">
@@ -467,115 +578,133 @@ export default function KioskPage() {
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0 ml-4">
-          <button className="flex items-center gap-2 bg-[#8b5cf6]/7 border border-[#8b5cf6]/18 rounded-full px-4 py-1.5 font-syne font-bold text-[10px] tracking-wider uppercase">
-            <span className="text-[#8B5CF6]">Queue</span>
-            <span className="bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] px-2 py-0.5 rounded-full text-white">{serverQueue.length}</span>
-          </button>
-        </div>
+        {/* Queue Button (mobile tap opens drawer) */}
+        <button 
+          onClick={() => setShowQueueDrawer(true)}
+          className="flex items-center gap-1.5 sm:gap-2 bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 rounded-full px-2.5 sm:px-4 py-1.5 font-syne font-bold text-[9px] sm:text-[10px] tracking-wider uppercase shrink-0 hover:border-[#d946ef]/40 transition-all"
+        >
+          <span className="text-[#8B5CF6]">🎵</span>
+          <span className="hidden xs:inline text-[#8B5CF6]">Queue</span>
+          <span className="bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] px-1.5 sm:px-2 py-0.5 rounded-full text-white min-w-[18px] text-center">
+            {serverQueue.length + (currentPrep ? 1 : 0) + (currentSong ? 1 : 0)}
+          </span>
+        </button>
+
+        {/* Settings gear */}
+        <button 
+          onClick={() => {
+            setTempApiKey(customApiKey);
+            setTempBusinessName(businessName);
+            setTempPromoText(promoText);
+            setTempPrepDuration(prepDuration);
+            setShowSettings(true);
+          }}
+          className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#0c061a]/80 border border-[#8b5cf6]/30 flex items-center justify-center text-[#8b5cf6] hover:text-[#d946ef] hover:border-[#d946ef]/60 transition-all group"
+        >
+          <svg className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </nav>
 
-      {/* Floating Settings Gear (top right for easy access) */}
-      <button 
-        onClick={() => {
-          setTempApiKey(customApiKey);
-          setTempBusinessName(businessName);
-          setTempPromoText(promoText);
-          setTempPrepDuration(prepDuration);
-          setShowSettings(true);
-        }}
-        className="fixed top-3 right-3 z-[200] w-10 h-10 rounded-full bg-[#0c061a]/80 backdrop-blur-xl border border-[#8b5cf6]/30 flex items-center justify-center text-[#8b5cf6] hover:text-[#d946ef] hover:border-[#d946ef]/60 transition-all shadow-2xl group"
-      >
-        <svg className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
-        </svg>
-      </button>
+      {/* ── CATEGORY PILLS (mobile only horizontal scroll) ── */}
+      <div className="lg:hidden flex gap-2 px-3 py-2 overflow-x-auto no-scrollbar shrink-0 border-b border-[#8b5cf6]/10 bg-[#04020a]/60 z-[50]">
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => { setActiveCat(cat.id); handleSearch(`${cat.label} karaoke`); }}
+            className={`shrink-0 px-3 py-1 rounded-full text-[10px] font-syne font-bold uppercase tracking-wide transition-all ${activeCat === cat.id ? 'bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white shadow-lg' : 'bg-white/5 border border-white/10 text-[#c8b9e6]/60'}`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
 
+      {/* ── MAIN BODY ── */}
       <div className="flex-1 flex overflow-hidden relative z-[50]">
-        {/* SIDE NAV / CATEGORIES */}
-        <aside className="w-[200px] p-4 border-r border-[#8b5cf6]/18 space-y-2 overflow-y-auto bg-[#04020a]/40">
+
+        {/* SIDE NAV (desktop only) */}
+        <aside className="hidden lg:flex w-[180px] xl:w-[200px] flex-col p-4 border-r border-[#8b5cf6]/18 space-y-1 overflow-y-auto bg-[#04020a]/40 shrink-0">
           {CATEGORIES.map(cat => (
             <button 
               key={cat.id} 
               onClick={() => { setActiveCat(cat.id); handleSearch(`${cat.label} karaoke`); }}
-              className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl text-left transition-all ${activeCat === cat.id ? 'bg-[#8b5cf6]/12 border border-[#d946ef]/45 text-white' : 'text-[#c8b9e6]/60 hover:bg-white/5'}`}
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-left transition-all ${activeCat === cat.id ? 'bg-[#8b5cf6]/12 border border-[#d946ef]/45 text-white' : 'text-[#c8b9e6]/60 hover:bg-white/5'}`}
             >
-              <div className={`w-2 h-2 rounded-full ${activeCat === cat.id ? 'bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] shadow-[0_0_8px_rgba(217,70,239,0.6)]' : 'bg-[#8b5cf6]/30'}`} />
-              <span className="text-xs font-syne font-bold uppercase tracking-wide">{cat.label}</span>
+              <div className={`w-2 h-2 rounded-full shrink-0 ${activeCat === cat.id ? 'bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] shadow-[0_0_8px_rgba(217,70,239,0.6)]' : 'bg-[#8b5cf6]/30'}`} />
+              <span className="text-[11px] font-syne font-bold uppercase tracking-wide">{cat.label}</span>
             </button>
           ))}
         </aside>
 
         {/* SONG GRID */}
         <main className="flex-1 flex flex-col min-w-0 bg-[#04020a]/20">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 px-8 shrink-0">
-            <div className="flex items-center gap-4 font-syne text-[11px] font-bold uppercase tracking-[0.4em] text-[#8B5CF6]">
-              {loading && <div className="w-5 h-5 border-2 border-[#d946ef]/25 border-t-[#d946ef] rounded-full animate-spin" />}
-              {searchQuery ? `Results: "${searchQuery}"` : "Discover High-Fidelity Tracks"}
+          {/* Language Filter Row */}
+          <div className="flex items-center justify-between px-3 sm:px-6 py-2 shrink-0 border-b border-[#8b5cf6]/8">
+            <div className="flex items-center gap-2 font-syne text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.3em] sm:tracking-[0.4em] text-[#8B5CF6]">
+              {loading && <div className="w-4 h-4 border-2 border-[#d946ef]/25 border-t-[#d946ef] rounded-full animate-spin" />}
+              <span className="truncate max-w-[150px] sm:max-w-none">
+                {searchQuery ? `"${searchQuery}"` : "All Songs"}
+              </span>
             </div>
-            
-            <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-2 max-w-[400px]">
+            <div className="flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar">
               {LANGUAGES.map(lang => (
                 <button 
                   key={lang.id} 
                   onClick={() => { setActiveLang(lang.id); handleSearch(searchValue || "karaoke hits 2024", lang.id); }}
-                  className={`flex flex-col items-center gap-2 shrink-0 ${activeLang === lang.id ? 'opacity-100' : 'opacity-40 hover:opacity-60'} transition-all`}
+                  className={`flex flex-col items-center gap-1 shrink-0 transition-all ${activeLang === lang.id ? 'opacity-100' : 'opacity-35 hover:opacity-60'}`}
                 >
-                  <div className={`w-10 h-10 rounded-full overflow-hidden border-2 p-0.5 ${activeLang === lang.id ? 'border-[#d946ef] shadow-[0_0_15px_rgba(217,70,239,0.4)]' : 'border-transparent'}`}>
-                    <div className="w-full h-full rounded-full overflow-hidden" dangerouslySetInnerHTML={{ __html: lang.id === 'all' ? `<div class="bg-indigo-900/50 w-full h-full flex items-center justify-center text-lg">🌐</div>` : FLAG_SVG[lang.id] }} />
+                  <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 p-0.5 ${activeLang === lang.id ? 'border-[#d946ef] shadow-[0_0_10px_rgba(217,70,239,0.4)]' : 'border-transparent'}`}>
+                    <div className="w-full h-full rounded-full overflow-hidden" dangerouslySetInnerHTML={{ __html: lang.id === 'all' ? `<div class="bg-indigo-900/50 w-full h-full flex items-center justify-center text-sm">🌐</div>` : FLAG_SVG[lang.id] }} />
                   </div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-8 pb-32">
+          {/* Grid */}
+          <div className="flex-1 overflow-y-auto px-3 sm:px-6 pb-24 sm:pb-8 pt-3">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-24 gap-6 opacity-40">
                 <div className="w-10 h-10 border-2 border-[#d946ef]/25 border-t-[#d946ef] rounded-full animate-spin" />
-                <span className="text-sm font-syne uppercase tracking-widest">Optimizing results for you...</span>
+                <span className="text-sm font-syne uppercase tracking-widest">Searching...</span>
               </div>
             ) : results.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 opacity-30 gap-4">
                 <span className="text-5xl animate-bounce">🔍</span>
-                <span className="text-sm font-syne uppercase tracking-[0.3em]">No matching tracks found</span>
+                <span className="text-sm font-syne uppercase tracking-[0.3em]">No tracks found</span>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-5">
                 {results.map((song, i) => (
                   <motion.div 
                     key={song.videoId}
                     initial={{ opacity: 0, scale: 0.95 }} 
                     animate={{ opacity: 1, scale: 1 }} 
-                    transition={{ delay: (i % 9) * 0.05 }}
+                    transition={{ delay: (i % 9) * 0.04 }}
                     onClick={() => handleSongClick(song)}
-                    className={`group relative overflow-hidden rounded-2xl bg-[#8b5cf6]/5 border border-[#8b5cf6]/10 hover:border-[#d946ef]/40 transition-all cursor-pointer shadow-lg hover:shadow-[0_0_30px_rgba(217,70,239,0.15)] ${serverQueue.some(s => s.videoId === song.videoId) ? 'bg-[#8b5cf6]/15 border-[#d946ef]/60 ring-2 ring-[#d946ef]/20' : ''}`}
+                    className={`group relative overflow-hidden rounded-2xl bg-[#8b5cf6]/5 border border-[#8b5cf6]/10 hover:border-[#d946ef]/40 active:border-[#d946ef]/60 transition-all cursor-pointer shadow-lg hover:shadow-[0_0_30px_rgba(217,70,239,0.15)] active:scale-[0.98] ${(serverQueue.some(s => s.videoId === song.videoId) || currentPrep?.song?.videoId === song.videoId || currentSong?.videoId === song.videoId) ? 'bg-[#8b5cf6]/15 border-[#d946ef]/60 ring-2 ring-[#d946ef]/20' : ''}`}
                   >
-                    {/* Thumbnail 16:9 */}
                     <div className="aspect-video w-full overflow-hidden bg-black/40 relative">
                       <img src={song.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={song.title} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
-                      
-                      {/* Queue Status Overlay */}
-                      {serverQueue.some(s => s.videoId === song.videoId) && (
+                      {(serverQueue.some(s => s.videoId === song.videoId) || currentPrep?.song?.videoId === song.videoId || currentSong?.videoId === song.videoId) && (
                         <div className="absolute inset-0 bg-[#d946ef]/20 backdrop-blur-[2px] flex items-center justify-center">
-                           <div className="bg-white text-[#d946ef] font-syne font-bold text-[10px] px-3 py-1 rounded-full shadow-xl animate-pulse">ALREADY QUEUED</div>
+                          <div className="bg-white text-[#d946ef] font-syne font-bold text-[9px] sm:text-[10px] px-3 py-1 rounded-full shadow-xl animate-pulse">
+                            {currentSong?.videoId === song.videoId ? '🎤 PERFORMING' : currentPrep?.song?.videoId === song.videoId ? '⏳ GETTING READY' : '✓ QUEUED'}
+                          </div>
                         </div>
                       )}
                     </div>
-
-                    <div className="p-4 space-y-1 relative">
-                      <h4 className="text-[14px] font-syne font-bold line-clamp-2 leading-tight group-hover:text-[#D946EF] transition-colors capitalize">{song.title.toLowerCase()}</h4>
+                    <div className="p-3 sm:p-4 space-y-1 relative">
+                      <h4 className="text-[12px] sm:text-[14px] font-syne font-bold line-clamp-2 leading-tight group-hover:text-[#D946EF] transition-colors capitalize">{song.title.toLowerCase()}</h4>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[10px] text-[#7c6f9a] font-medium tracking-wide truncate flex-1">{song.channel}</p>
-                        <div className="shrink-0 w-8 h-8 rounded-full bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 flex items-center justify-center text-[#8B5CF6] group-hover:bg-[#d946ef] group-hover:text-white group-hover:border-[#d946ef] transition-all shadow-lg group-active:scale-90">
-                           <span className="text-lg font-bold leading-none">+</span>
+                        <p className="text-[9px] sm:text-[10px] text-[#7c6f9a] font-medium tracking-wide truncate flex-1">{song.channel}</p>
+                        <div className="shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 flex items-center justify-center text-[#8B5CF6] group-hover:bg-[#d946ef] group-hover:text-white group-hover:border-[#d946ef] transition-all">
+                          <span className="text-base sm:text-lg font-bold leading-none">+</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Hover Effect Light */}
                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#d946ef]/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   </motion.div>
                 ))}
@@ -584,78 +713,73 @@ export default function KioskPage() {
           </div>
         </main>
 
-        {/* QUEUE SIDEBAR */}
-        <aside className="w-[300px] border-l border-[#8b5cf6]/18 bg-[#04020a]/68 backdrop-blur-3xl flex flex-col shrink-0">
-          <div className="p-5 border-b border-[#8b5cf6]/18 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-syne text-[10px] font-bold uppercase tracking-[0.35em] text-[#8B5CF6]">Stage Queue</h3>
-              <span className="text-[9px] text-[#8b5cf6]/50 uppercase font-bold">{serverQueue.length} active</span>
-            </div>
-            
-            <div className={`relative ${shakeInput ? 'animate-[shake_0.3s_ease]' : ''}`}>
-              <input 
-                 ref={singerRef}
-                 className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 text-white placeholder-[#7c6f9a]/40 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#d946ef] transition-all"
-                 placeholder="Your Name (e.g. Sam S.)"
-                 value={singerName}
-                 onChange={(e) => setSingerName(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="p-4 border-b border-[#8b5cf6]/18 bg-white/5">
-             <div className="flex items-center gap-2 font-syne text-[9px] font-bold uppercase tracking-[0.4em] text-[#D946EF] mb-3">
-                <Waveform /> Now Performing
-             </div>
-             {currentSong ? (
-               <div className="flex items-center gap-3 animate-[fadeIn_0.5s_ease]">
-                 <div className="w-10 h-7 rounded bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 flex items-center justify-center text-xs">🎤</div>
-                 <div className="flex-1 min-w-0 px-1">
-                    <div className="text-[11px] font-bold truncate">{currentSong.title}</div>
-                    <div className="text-[9px] text-[#7c6f9a] truncate">{currentSong.singerName}</div>
-                 </div>
-                 <button
-                   onClick={() => setShowCancelCurrentModal(true)}
-                   className="px-2.5 py-1 rounded-full bg-[#ec4899]/15 text-[#ec4899] hover:bg-[#ec4899]/25 text-[8px] font-syne font-bold uppercase tracking-wider transition-all shrink-0"
-                   title="Stop current performance"
-                 >
-                   Stop
-                 </button>
-               </div>
-             ) : (
-               <div className="text-[10px] text-[#7c6f9a]/30 italic text-center py-2 uppercase tracking-tighter">No live performer</div>
-             )}
-          </div>
-
-          {serverQueue.length === 0 ? (
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center gap-3 opacity-20">
-              <span className="text-3xl">🎶</span>
-              <p className="text-[11px] text-center font-syne uppercase tracking-wider">Queue is Empty</p>
-            </div>
-          ) : (
-            <Reorder.Group 
-              values={serverQueue} 
-              onReorder={handleReorder} 
-              className="flex-1 overflow-y-auto p-4 space-y-2"
-              axis="y"
-            >
-              {serverQueue.map((song, i) => (
-                <QueueItem 
-                  key={song.id} 
-                  song={song} 
-                  index={i} 
-                  onCancel={setCancelSong} 
-                />
-              ))}
-            </Reorder.Group>
-          )}
-
-          <div className="p-5 border-t border-[#8b5cf6]/18 shrink-0 text-center bg-[#0c051a]/40">
-             <p className="text-[10px] font-syne font-bold uppercase tracking-wider text-[#c8b9e6]/50 mb-1">Select a song to book</p>
-             <p className="text-[9px] text-[#7c6f9a]/70 italic leading-relaxed">It will instantly sync to the stage screen.</p>
-          </div>
+        {/* ── QUEUE SIDEBAR (desktop only) ── */}
+        <aside className="hidden lg:flex w-[280px] xl:w-[300px] border-l border-[#8b5cf6]/18 bg-[#04020a]/68 backdrop-blur-3xl flex-col shrink-0">
+          <QueueSidebarContent
+            serverQueue={serverQueue}
+            currentSong={currentSong}
+            currentPrep={currentPrep}
+            singerName={singerName}
+            setSingerName={setSingerName}
+            singerRef={singerRef}
+            shakeInput={shakeInput}
+            handleReorder={handleReorder}
+            setCancelSong={setCancelSong}
+            setShowCancelCurrentModal={setShowCancelCurrentModal}
+          />
         </aside>
       </div>
+
+      {/* ── MOBILE FLOATING QUEUE BUTTON ── */}
+      <div className="lg:hidden fixed bottom-5 right-4 z-[150]">
+        <button
+          onClick={() => setShowQueueDrawer(true)}
+          className="flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne font-bold text-[11px] uppercase tracking-wide shadow-[0_8px_30px_rgba(139,92,246,0.5)] active:scale-95 transition-all"
+        >
+          🎵 Queue
+          <span className="bg-white/25 px-2 py-0.5 rounded-full text-white text-[10px]">
+            {serverQueue.length + (currentPrep ? 1 : 0) + (currentSong ? 1 : 0)}
+          </span>
+        </button>
+      </div>
+
+      {/* ── MOBILE QUEUE DRAWER ── */}
+      <AnimatePresence>
+        {showQueueDrawer && (
+          <motion.div
+            key="queue-drawer"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="lg:hidden fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowQueueDrawer(false)}
+          >
+            <motion.div
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="absolute top-0 right-0 h-full w-full max-w-[340px] bg-[#04020a]/97 border-l border-[#8b5cf6]/18 flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-[#8b5cf6]/18">
+                <h2 className="font-syne text-[11px] font-bold uppercase tracking-[0.35em] text-[#8B5CF6]">Stage Queue</h2>
+                <button onClick={() => setShowQueueDrawer(false)} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all">✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <QueueSidebarContent
+                  serverQueue={serverQueue}
+                  currentSong={currentSong}
+                  currentPrep={currentPrep}
+                  singerName={singerName}
+                  setSingerName={setSingerName}
+                  singerRef={singerRef}
+                  shakeInput={shakeInput}
+                  handleReorder={handleReorder}
+                  setCancelSong={setCancelSong}
+                  setShowCancelCurrentModal={setShowCancelCurrentModal}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* MODALS */}
 

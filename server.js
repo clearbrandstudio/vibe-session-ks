@@ -70,9 +70,16 @@ function startPrepCountdown(ioInstance, roomID) {
   if (!room.currentPrep) return;
   
   console.log(`[Queue - ${roomID}] Preparing: "${room.currentPrep.song.title}" for ${room.currentPrep.song.singerName}`);
+  
+  // Emit both song:prep (for stage stinger) AND queue:updated (for kiosk sidebar sync)
   ioInstance.to(roomID).emit('song:prep', { 
     currentPrep: room.currentPrep, 
     queue: room.queue 
+  });
+  ioInstance.to(roomID).emit('queue:updated', {
+    queue: room.queue,
+    currentSong: room.currentSong,
+    currentPrep: room.currentPrep
   });
 
   if (room.prepTimer) clearInterval(room.prepTimer);
@@ -88,6 +95,12 @@ function startPrepCountdown(ioInstance, roomID) {
       ioInstance.to(roomID).emit('song:play', { 
         currentSong: room.currentSong, 
         queue: room.queue 
+      });
+      // Also emit queue:updated so kiosk "Now Performing" updates
+      ioInstance.to(roomID).emit('queue:updated', {
+        queue: room.queue,
+        currentSong: room.currentSong,
+        currentPrep: null
       });
     } else {
       ioInstance.to(roomID).emit('song:prep', { 
