@@ -320,19 +320,27 @@ const IdleScreen = ({ nextPerformer, queue = [], onStart, settings }) => {
 };
 
 const Stinger = ({ current, onComplete }) => {
+  if (!current) return null;
   const [phase, setPhase] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     const timer1 = setTimeout(() => setPhase(1), 50);   // Close
     const timer2 = setTimeout(() => setPhase(2), 570);  // Reveal content
     const timer3 = setTimeout(() => setPhase(3), 2670); // Hold for 2.1s
-    const timer4 = setTimeout(() => onComplete(), 3220); // Open & Done
+    const timer4 = setTimeout(() => {
+      if (onCompleteRef.current) onCompleteRef.current();
+    }, 3220); // Open & Done
 
     return () => {
       clearTimeout(timer1); clearTimeout(timer2);
       clearTimeout(timer3); clearTimeout(timer4);
     };
-  }, [onComplete]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden">
@@ -388,9 +396,15 @@ const Stinger = ({ current, onComplete }) => {
 };
 
 const Countdown = ({ current, onComplete }) => {
+  if (!current) return null;
   const count = current.timeLeft !== undefined ? current.timeLeft : 15;
   const [totalDuration] = useState(current.timeLeft || 15);
   const [flash, setFlash] = useState(false);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     setFlash(true);
@@ -399,10 +413,10 @@ const Countdown = ({ current, onComplete }) => {
   }, [count]);
 
   useEffect(() => {
-    if (count <= 0) {
-      onComplete();
+    if (count <= 0 && onCompleteRef.current) {
+      onCompleteRef.current();
     }
-  }, [count, onComplete]);
+  }, [count]);
 
   const dasharray = 2 * Math.PI * 90;
   const dashoffset = dasharray - (count / totalDuration) * dasharray;
@@ -503,6 +517,7 @@ const NPBar = ({ current, queue = [] }) => {
 }
 
 const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
+  if (!current || !current.videoId) return null;
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
 
@@ -521,6 +536,8 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
   }, [current.videoId]);
 
   useEffect(() => {
+    if (!current || !current.videoId) return;
+
     // YouTube API Load
     if (!window.YT) {
       const tag = document.createElement('script');
@@ -552,10 +569,24 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
       });
     };
 
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-    } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
+    const checkAndInit = () => {
+      if (window.YT && window.YT.Player && typeof window.YT.Player === 'function') {
+        initPlayer();
+        return true;
+      }
+      return false;
+    };
+
+    if (!checkAndInit()) {
+      const interval = setInterval(() => {
+        if (checkAndInit()) {
+          clearInterval(interval);
+        }
+      }, 100);
+      return () => {
+        clearInterval(interval);
+        if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
+      };
     }
 
     return () => {
@@ -656,9 +687,17 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
 };;
 
 const PromoPlayingScreen = ({ video, onEnded, settings }) => {
+  if (!video || !video.videoId) return null;
   const playerRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
 
   useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  useEffect(() => {
+    if (!video || !video.videoId) return;
+
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
@@ -681,22 +720,38 @@ const PromoPlayingScreen = ({ video, onEnded, settings }) => {
         events: {
           onReady: (e) => e.target.playVideo(),
           onStateChange: (e) => {
-             if (e.data === 0) onEnded();
+             if (e.data === 0 && onEndedRef.current) {
+               onEndedRef.current();
+             }
           }
         }
       });
     };
 
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-    } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
+    const checkAndInit = () => {
+      if (window.YT && window.YT.Player && typeof window.YT.Player === 'function') {
+        initPlayer();
+        return true;
+      }
+      return false;
+    };
+
+    if (!checkAndInit()) {
+      const interval = setInterval(() => {
+        if (checkAndInit()) {
+          clearInterval(interval);
+        }
+      }, 100);
+      return () => {
+        clearInterval(interval);
+        if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
+      };
     }
 
     return () => {
       if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
     };
-  }, [video.videoId, onEnded]);
+  }, [video.videoId]);
 
   return (
     <motion.div 
@@ -1054,7 +1109,7 @@ export default function StagePage() {
 
           {stage === ST.COUNTDOWN && (
             <Countdown 
-              key="countdown" 
+              key={`countdown-${current?.videoId || ''}`} 
               current={current} 
               onComplete={() => {
                 setStage(ST.PLAYING);
@@ -1065,7 +1120,7 @@ export default function StagePage() {
 
           {stage === ST.PLAYING && (
             <PlayingScreen 
-              key="playing" 
+              key={`playing-${current?.videoId || ''}`} 
               current={current} 
               queue={queue} 
               onEnded={nextSong}
@@ -1076,7 +1131,7 @@ export default function StagePage() {
 
           {stage === ST.PROMO_PLAYING && (
             <PromoPlayingScreen 
-              key="promo" 
+              key={`promo-${VIBE_STUDIO_COVERS[promoIndex]?.videoId || ''}`} 
               video={VIBE_STUDIO_COVERS[promoIndex]} 
               onEnded={() => {
                 setPromoIndex(prev => {
@@ -1095,6 +1150,7 @@ export default function StagePage() {
 
         {stage === ST.STINGER && (
           <Stinger 
+            key={`stinger-${current?.videoId || ''}`} 
             current={current} 
             onComplete={() => {
               setShowHUD(true);
