@@ -121,20 +121,27 @@ app.get('/api/feed', (req, res) => {
 // ──────────────────────────────────────────────
 app.get('/api/settings', (req, res) => {
   const roomID = req.query.room || 'default';
+  const envKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YT_API_KEY || '';
   try {
     const settingsPath = path.join(__dirname, 'settings.json');
     if (!fs.existsSync(settingsPath)) {
-      return res.json({ youtubeApiKey: '', businessName: 'Vibe Sessions', promoText: '' });
+      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions', promoText: '' });
     }
     const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     // If it's a legacy flat file, convert it to room-based
     if (!allSettings.rooms) {
        const legacy = { ...allSettings };
+       if (!legacy.youtubeApiKey || legacy.youtubeApiKey === 'YOUR_YOUTUBE_API_KEY_HERE') {
+         legacy.youtubeApiKey = envKey;
+       }
        res.json(legacy);
        return;
     }
     const settings = allSettings.rooms[roomID] || allSettings.rooms['default'] || {};
-    res.json({ ...settings, youtubeApiKey: allSettings.youtubeApiKey });
+    const finalKey = allSettings.youtubeApiKey && allSettings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE'
+      ? allSettings.youtubeApiKey
+      : envKey;
+    res.json({ ...settings, youtubeApiKey: finalKey });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load settings' });
   }
@@ -183,10 +190,16 @@ app.get('/api/search', async (req, res) => {
 
   try {
     const settingsPath = path.join(__dirname, 'settings.json');
-    let apiKey = null;
+    let apiKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YT_API_KEY || null;
     if (fs.existsSync(settingsPath)) {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      apiKey = settings.youtubeApiKey;
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        if (settings.youtubeApiKey && settings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE') {
+          apiKey = settings.youtubeApiKey;
+        }
+      } catch (e) {
+        console.error('Error reading settings.json:', e);
+      }
     }
     
     // Official API Fallback
