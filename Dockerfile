@@ -27,6 +27,7 @@ COPY settings.json ./
 
 # Copy the built React app from Stage 1 into the server's expected static directory
 COPY --from=build /app/client/dist ./client/dist
+COPY client/settings.html ./client/settings.html
 
 # Expose the port the server listens on
 EXPOSE 3001
