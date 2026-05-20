@@ -343,6 +343,39 @@ app.post('/api/queue/next', (req, res) => {
   res.json({ success: true, queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
 });
 
+// REST – HTTP fallback for queue:remove
+app.post('/api/queue/remove', (req, res) => {
+  const roomID = req.query.room || req.body.room || 'default';
+  const { id } = req.body;
+  const room = getRoomState(roomID);
+  room.queue = room.queue.filter((item) => item.id !== id);
+
+  io.to(roomID).emit('queue:updated', { 
+    queue: room.queue, 
+    currentSong: room.currentSong, 
+    currentPrep: room.currentPrep 
+  });
+
+  res.json({ success: true, queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
+});
+
+// REST – HTTP fallback for queue:reorder
+app.post('/api/queue/reorder', (req, res) => {
+  const roomID = req.query.room || req.body.room || 'default';
+  const { queue } = req.body;
+  const room = getRoomState(roomID);
+  if (Array.isArray(queue)) {
+    room.queue = queue;
+    io.to(roomID).emit('queue:updated', { 
+      queue: room.queue, 
+      currentSong: room.currentSong, 
+      currentPrep: room.currentPrep 
+    });
+  }
+
+  res.json({ success: true, queue: room.queue, currentSong: room.currentSong, currentPrep: room.currentPrep });
+});
+
 
 // ──────────────────────────────────────────────
 // Socket.io

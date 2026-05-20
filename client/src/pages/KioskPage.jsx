@@ -176,7 +176,11 @@ const QueueItem = ({ song, index, onCancel }) => {
       className="group relative flex items-center gap-2.5 p-2 rounded-xl bg-white/5 border border-transparent hover:border-[#ec4899]/18 transition-all"
     >
       <div 
-        onPointerDown={(e) => dragControls.start(e)}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          dragControls.start(e);
+        }}
+        style={{ touchAction: 'none' }}
         className="cursor-grab active:cursor-grabbing p-1 text-white/20 hover:text-white/60 transition-colors shrink-0"
       >
         <svg width="12" height="18" viewBox="0 0 12 18" fill="none">
@@ -536,15 +540,51 @@ export default function KioskPage() {
     }
   };
 
-  const removeSongFromServer = (id) => {
-    socket.emit("queue:remove", { id });
+  const removeSongFromServer = async (id) => {
+    const params = new URLSearchParams(window.location.search);
+    const roomID = params.get('room') || 'default';
+
+    try {
+      const res = await fetch(`/api/queue/remove?room=${roomID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setServerQueue(data.queue || []);
+        setCurrentSong(data.currentSong || null);
+        setCurrentPrep(data.currentPrep || null);
+      }
+    } catch (err) {
+      console.warn('[Queue] HTTP remove failed, falling back to socket:', err);
+      socket.emit("queue:remove", { id });
+    }
     setCancelSong(null);
     showToast("Removed song from queue");
   };
 
-  const handleReorder = (newQueue) => {
+  const handleReorder = async (newQueue) => {
     setServerQueue(newQueue);
-    socket.emit("queue:reorder", { queue: newQueue });
+    const params = new URLSearchParams(window.location.search);
+    const roomID = params.get('room') || 'default';
+
+    try {
+      const res = await fetch(`/api/queue/reorder?room=${roomID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queue: newQueue })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setServerQueue(data.queue || []);
+        setCurrentSong(data.currentSong || null);
+        setCurrentPrep(data.currentPrep || null);
+      }
+    } catch (err) {
+      console.warn('[Queue] HTTP reorder failed, falling back to socket:', err);
+      socket.emit("queue:reorder", { queue: newQueue });
+    }
   };
 
   const saveSettings = async (key, bName, pText, duration) => {
@@ -745,9 +785,10 @@ export default function KioskPage() {
                       <img src={song.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={song.title} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                       {(serverQueue.some(s => s.videoId === song.videoId) || currentPrep?.song?.videoId === song.videoId || currentSong?.videoId === song.videoId) && (
-                        <div className="absolute inset-0 bg-[#d946ef]/20 backdrop-blur-[2px] flex items-center justify-center">
-                          <div className="bg-white text-[#d946ef] font-syne font-bold text-[9px] sm:text-[10px] px-3 py-1 rounded-full shadow-xl animate-pulse">
-                            {currentSong?.videoId === song.videoId ? '🎤 PERFORMING' : currentPrep?.song?.videoId === song.videoId ? '⏳ GETTING READY' : '✓ QUEUED'}
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-[3px] flex items-center justify-center">
+                          <div className="bg-[#1c0d3a]/95 border border-[#d946ef]/45 text-[#D946EF] font-syne font-bold text-[8px] sm:text-[9px] px-4 py-2 rounded-full shadow-[0_0_25px_rgba(217,70,239,0.35)] tracking-[0.18em] flex items-center gap-2 pointer-events-none">
+                            <span className={`w-1.5 h-1.5 rounded-full ${currentSong?.videoId === song.videoId ? 'bg-[#D946EF] animate-pulse' : currentPrep?.song?.videoId === song.videoId ? 'bg-amber-400 animate-pulse' : 'bg-green-400'}`} />
+                            <span>{currentSong?.videoId === song.videoId ? 'PERFORMING' : currentPrep?.song?.videoId === song.videoId ? 'GETTING READY' : 'QUEUED'}</span>
                           </div>
                         </div>
                       )}
@@ -1047,8 +1088,21 @@ export default function KioskPage() {
                <div className="flex gap-4">
                   <button onClick={() => setShowCancelCurrentModal(false)} className="flex-1 py-3 rounded-full border border-[#8b5cf6]/18 text-[10px] font-bold uppercase tracking-widest text-[#F8F4FF]/60 hover:text-white transition-all">No</button>
                   <button 
-                    onClick={() => {
-                      socket.emit("queue:next");
+                    onClick={async () => {
+                      const params = new URLSearchParams(window.location.search);
+                      const roomID = params.get('room') || 'default';
+                      try {
+                        const res = await fetch(`/api/queue/next?room=${roomID}`, { method: 'POST' });
+                        const data = await res.json();
+                        if (data.success) {
+                          setServerQueue(data.queue || []);
+                          setCurrentSong(data.currentSong || null);
+                          setCurrentPrep(data.currentPrep || null);
+                        }
+                      } catch (err) {
+                        console.warn('[Queue] HTTP next failed, falling back to socket:', err);
+                        socket.emit("queue:next");
+                      }
                       setShowCancelCurrentModal(false);
                       showToast("Stopping current performance");
                     }}

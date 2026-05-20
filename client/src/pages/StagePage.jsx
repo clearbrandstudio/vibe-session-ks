@@ -12,8 +12,14 @@ const ST = {
   IDLE: 'idle',
   STINGER: 'stinger',
   COUNTDOWN: 'countdown',
-  PLAYING: 'playing'
+  PLAYING: 'playing',
+  PROMO_PLAYING: 'promo_playing'
 };
+
+const VIBE_STUDIO_COVERS = [
+  { videoId: "mdMWwFN-rtQ", title: "Yesterday Once More", artist: "JOED (The Carpenters Cover)" },
+  { videoId: "Ph2aBlmS3Cc", title: "So Slow", artist: "Mel (Freestyle Acoustic Cover)" },
+];
 
 const DEMO_QUEUE = [
   { id: 1, singerName: "Sarah K.",  title: "Bohemian Rhapsody", artist: "Queen", videoId: "fJ9rUzIMcZQ" },
@@ -22,6 +28,7 @@ const DEMO_QUEUE = [
   { id: 4, singerName: "Mia L.",    title: "Someone Like You",  artist: "Adele", videoId: "hLQl3WQQoQ0" },
   { id: 5, singerName: "Alex R.",   title: "Levitating",        artist: "Dua Lipa", videoId: "TUVcZfQe-Kw" },
 ];
+
 
 // --- ATMOSPHERE COMPONENTS ---
 
@@ -599,7 +606,77 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
   );
 };
 
+const PromoPlayingScreen = ({ video, onEnded, settings }) => {
+  const playerRef = useRef(null);
+
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+
+    const initPlayer = () => {
+      playerRef.current = new window.YT.Player('yt-player-promo', {
+        videoId: video.videoId,
+        playerVars: { 
+          autoplay: 1, 
+          controls: 0, 
+          disablekb: 1, 
+          fs: 0, 
+          modestbranding: 1, 
+          rel: 0, 
+          iv_load_policy: 3 
+        },
+        events: {
+          onReady: (e) => e.target.playVideo(),
+          onStateChange: (e) => {
+             if (e.data === 0) onEnded();
+          }
+        }
+      });
+    };
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = initPlayer;
+    }
+
+    return () => {
+      if (playerRef.current && playerRef.current.destroy) playerRef.current.destroy();
+    };
+  }, [video.videoId, onEnded]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="relative w-full h-full flex flex-col items-center justify-center p-6 bg-black"
+    >
+      {/* YouTube Player Layer */}
+      <div className="absolute inset-0 z-7 bg-black overflow-hidden">
+         <div id="yt-player-promo" className="w-full h-full pointer-events-none scale-[1.05]" />
+         <div className="absolute inset-0 bg-black/30" />
+      </div>
+
+      {/* Floating Info Overlay (Broadcast styling) */}
+      <div className="fixed bottom-12 left-12 z-20 bg-black/60 border border-white/10 backdrop-blur-md px-6 py-4 rounded-2xl flex flex-col pointer-events-none animate-[fadeInUp_0.8s_ease]">
+        <span className="font-syne text-[8px] text-[#db2777] uppercase tracking-[0.3em] font-bold">Vibe Session Studio Cover Series</span>
+        <span className="font-syne font-semibold text-white text-sm mt-1">{video.title}</span>
+        <span className="font-dm text-[10px] text-[#7c6f9a] mt-0.5">{video.artist}</span>
+      </div>
+
+      {/* Top logo */}
+      <div className="fixed top-12 right-12 z-20 opacity-30 font-syne text-[11px] tracking-[0.4em] uppercase text-white pointer-events-none">
+        Vibe Session Studio
+      </div>
+    </motion.div>
+  );
+};
+
 // --- MAIN COMPONENT ---
+
 
 export default function StagePage() {
   const [stage, setStage] = useState(ST.IDLE);
@@ -612,10 +689,12 @@ export default function StagePage() {
   const [showHUD, setShowHUD] = useState(true);
   const [settings, setSettings] = useState(null);
 
+  const [promoIndex, setPromoIndex] = useState(0);
   const inactivityTimerRef = useRef(null);
   const lastPrepIdRef = useRef(null);
 
   // Sync Logic (Socket.io)
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
@@ -785,18 +864,18 @@ export default function StagePage() {
     return realQueue;
   }, [isDemoMode, realQueue, demoIndex]);
 
-  // Premium Inactivity Timer: after 5 minutes of total idle silence, enter Demo Mode
+  // Promo Video Autoplay Inactivity Timer: after 30 seconds of total idle silence, start Cover videos
+
   useEffect(() => {
-    const isIdle = hasStarted && !isDemoMode && realQueue.length === 0 && !realCurrent && !realPrep && stage === ST.IDLE;
+    const isIdle = hasStarted && realQueue.length === 0 && !realCurrent && !realPrep && stage === ST.IDLE;
 
     if (isIdle) {
-      console.log("[Stage] Stage is idle. Starting 5-minute inactivity countdown...");
+      console.log("[Stage] Stage is idle. Starting 30-second promo autoplay countdown...");
       inactivityTimerRef.current = setTimeout(() => {
-        console.log("[Stage] 5 minutes inactivity reached. Activating Demo Mode!");
-        setIsDemoMode(true);
-        setDemoIndex(0);
-        setStage(ST.STINGER);
-      }, 300000); // 5 minutes
+        console.log("[Stage] 30 seconds inactivity reached. Activating Promo/Cover mode!");
+        setPromoIndex(0);
+        setStage(ST.PROMO_PLAYING);
+      }, 30000); // 30 seconds
     } else {
       if (inactivityTimerRef.current) {
         console.log("[Stage] Activity detected or stage state changed. Resetting inactivity timer.");
@@ -810,22 +889,64 @@ export default function StagePage() {
         clearTimeout(inactivityTimerRef.current);
       }
     };
-  }, [hasStarted, isDemoMode, realQueue.length, realCurrent, realPrep, stage]);
+  }, [hasStarted, realQueue.length, realCurrent, realPrep, stage]);
 
-  const startSession = () => {
+  const startSession = async () => {
     if (isDemoMode) {
       setStage(ST.STINGER);
     } else {
-      socket.emit('queue:next');
+      const params = new URLSearchParams(window.location.search);
+      const roomID = params.get('room') || 'default';
+      try {
+        const res = await fetch(`/api/queue/next?room=${roomID}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          setRealQueue(data.queue || []);
+          setRealCurrent(data.currentSong || null);
+          setRealPrep(data.currentPrep || null);
+          if (data.currentSong) {
+            setStage(ST.PLAYING);
+          } else if (data.currentPrep) {
+            lastPrepIdRef.current = data.currentPrep?.song?.id;
+            setStage(ST.STINGER);
+          } else {
+            setStage(ST.IDLE);
+          }
+        }
+      } catch (err) {
+        console.warn('[Stage] HTTP next/start failed, falling back to socket:', err);
+        socket.emit('queue:next');
+      }
     }
   };
 
-  const nextSong = () => {
+  const nextSong = async () => {
     if (isDemoMode) {
       setDemoIndex(prev => (prev + 1) % DEMO_QUEUE.length);
       setStage(ST.STINGER);
     } else {
-      socket.emit('queue:next');
+      const params = new URLSearchParams(window.location.search);
+      const roomID = params.get('room') || 'default';
+      try {
+        const res = await fetch(`/api/queue/next?room=${roomID}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          setRealQueue(data.queue || []);
+          setRealCurrent(data.currentSong || null);
+          setRealPrep(data.currentPrep || null);
+          if (data.currentSong) {
+            setStage(ST.PLAYING);
+          } else if (data.currentPrep) {
+            lastPrepIdRef.current = data.currentPrep?.song?.id;
+            setStage(ST.STINGER);
+          } else {
+            setStage(ST.IDLE);
+          }
+        }
+      } catch (err) {
+        console.warn('[Stage] HTTP next failed, falling back to socket:', err);
+        socket.emit('queue:next');
+      }
     }
   };
 
@@ -900,6 +1021,17 @@ export default function StagePage() {
               queue={queue} 
               onEnded={nextSong}
               showHUD={showHUD}
+              settings={settings}
+            />
+          )}
+
+          {stage === ST.PROMO_PLAYING && (
+            <PromoPlayingScreen 
+              key="promo" 
+              video={VIBE_STUDIO_COVERS[promoIndex]} 
+              onEnded={() => {
+                setPromoIndex(prev => (prev + 1) % VIBE_STUDIO_COVERS.length);
+              }}
               settings={settings}
             />
           )}
