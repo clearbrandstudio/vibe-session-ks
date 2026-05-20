@@ -24,6 +24,16 @@
     overflow-x: hidden;
     letter-spacing: -0.02em;
   }
+
+  /* Webkit autofill overrides to preserve premium dark styling and readability */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-text-fill-color: #F8F4FF !important;
+    -webkit-box-shadow: 0 0 0px 1000px #0c051a inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
 }
 
 @layer utilities {

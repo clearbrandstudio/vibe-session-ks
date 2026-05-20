@@ -604,11 +604,16 @@ const PlayingScreen = ({ current, queue = [], onEnded, showHUD, settings }) => {
 
 export default function StagePage() {
   const [stage, setStage] = useState(ST.IDLE);
-  const [queue, setQueue] = useState([]);
-  const [current, setCurrent] = useState(null);
+  const [realQueue, setRealQueue] = useState([]);
+  const [realCurrent, setRealCurrent] = useState(null);
+  const [realPrep, setRealPrep] = useState(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoIndex, setDemoIndex] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
   const [showHUD, setShowHUD] = useState(true);
   const [settings, setSettings] = useState(null);
+
+  const inactivityTimerRef = useRef(null);
 
   // Sync Logic (Socket.io)
   useEffect(() => {
@@ -619,13 +624,17 @@ export default function StagePage() {
     fetch(`/api/state?room=${roomID}`)
       .then(res => res.json())
       .then(data => {
-        setQueue(data.queue || []);
+        setRealQueue(data.queue || []);
         if (data.currentSong) {
-          setCurrent(data.currentSong);
+          setIsDemoMode(false);
+          setRealCurrent(data.currentSong);
           setStage(ST.PLAYING);
         } else if (data.currentPrep) {
-          setCurrent({ ...data.currentPrep.song, timeLeft: data.currentPrep.timeLeft });
+          setIsDemoMode(false);
+          setRealPrep(data.currentPrep);
           setStage(ST.COUNTDOWN);
+        } else {
+          setStage(ST.IDLE);
         }
       });
 
@@ -634,60 +643,150 @@ export default function StagePage() {
       .then(res => res.json())
       .then(data => setSettings(data));
 
-    socket.on('queue:updated', ({ queue: newQueue }) => {
-      setQueue(newQueue || []);
-    });
+    const onQueueUpdated = ({ queue: newQueue, currentSong: cs, currentPrep: cp }) => {
+      setRealQueue(newQueue || []);
+      if (cs) {
+        setIsDemoMode(false);
+        setRealCurrent(cs);
+        setStage(ST.PLAYING);
+      }
+      if (cp) {
+        setIsDemoMode(false);
+        setRealPrep(cp);
+        setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
+      }
+      if (!cs && !cp && (!newQueue || newQueue.length === 0)) {
+        setRealCurrent(null);
+        setRealPrep(null);
+        if (!isDemoMode) {
+          setStage(ST.IDLE);
+        }
+      }
+    };
 
-    socket.on('song:prep', ({ currentPrep }) => {
-      setCurrent({ ...currentPrep.song, timeLeft: currentPrep.timeLeft });
+    const onSongPrep = ({ currentPrep, queue: q }) => {
+      setIsDemoMode(false);
+      setRealPrep(currentPrep);
+      setRealCurrent(null);
+      if (q) setRealQueue(q);
       setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.STINGER);
-    });
+    };
 
-    socket.on('state:sync', ({ queue: q, currentSong: cs, currentPrep: cp }) => {
-       setQueue(q || []);
-       if (cs) {
-         setCurrent(cs);
-         setStage(ST.PLAYING);
-       } else if (cp) {
-         setCurrent({ ...cp.song, timeLeft: cp.timeLeft });
-         setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
-       }
-    });
+    const onStateSync = ({ queue: q, currentSong: cs, currentPrep: cp }) => {
+      setRealQueue(q || []);
+      setRealCurrent(cs);
+      setRealPrep(cp);
+      if (cs) {
+        setIsDemoMode(false);
+        setStage(ST.PLAYING);
+      } else if (cp) {
+        setIsDemoMode(false);
+        setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
+      } else {
+        if (!isDemoMode) {
+          setStage(ST.IDLE);
+        }
+      }
+    };
 
-    socket.on('settings:updated', (newSettings) => {
+    const onSongPlay = ({ currentSong, queue: q }) => {
+      setRealCurrent(currentSong);
+      setRealPrep(null);
+      if (q) setRealQueue(q);
+      if (currentSong) {
+        setIsDemoMode(false);
+        setStage(ST.PLAYING);
+      } else {
+        if (!isDemoMode) {
+          setStage(ST.IDLE);
+        }
+      }
+    };
+
+    const onSettingsUpdated = (newSettings) => {
       console.log('[Stage] Settings updated:', newSettings);
       setSettings(newSettings);
-    });
+    };
+
+    socket.on('queue:updated', onQueueUpdated);
+    socket.on('song:prep', onSongPrep);
+    socket.on('state:sync', onStateSync);
+    socket.on('song:play', onSongPlay);
+    socket.on('settings:updated', onSettingsUpdated);
 
     return () => {
-      socket.off('queue:updated');
-      socket.off('song:prep');
-      socket.off('state:sync');
-      socket.off('settings:updated');
+      socket.off('queue:updated', onQueueUpdated);
+      socket.off('song:prep', onSongPrep);
+      socket.off('state:sync', onStateSync);
+      socket.off('song:play', onSongPlay);
+      socket.off('settings:updated', onSettingsUpdated);
     };
-  }, []);
+  }, [isDemoMode]);
 
-  // Infinite Demo Loop
-  useEffect(() => {
-    if (queue.length === 0 && !current) {
-      setQueue(DEMO_QUEUE);
+  // Calculated values for active display (seamlessly mapping real vs. demo mock queue)
+  const current = useMemo(() => {
+    if (isDemoMode) {
+      const dSong = DEMO_QUEUE[demoIndex];
+      return { ...dSong, timeLeft: 5 }; // Fast 5 seconds countdown in demo mode
     }
-  }, [queue, current]);
+    if (realPrep) {
+      return { ...realPrep.song, timeLeft: realPrep.timeLeft };
+    }
+    return realCurrent;
+  }, [isDemoMode, demoIndex, realCurrent, realPrep]);
+
+  const queue = useMemo(() => {
+    if (isDemoMode) {
+      const q = [];
+      for (let i = 1; i < DEMO_QUEUE.length; i++) {
+        q.push(DEMO_QUEUE[(demoIndex + i) % DEMO_QUEUE.length]);
+      }
+      return q;
+    }
+    return realQueue;
+  }, [isDemoMode, realQueue, demoIndex]);
+
+  // Premium Inactivity Timer: after 5 minutes of total idle silence, enter Demo Mode
+  useEffect(() => {
+    const isIdle = hasStarted && !isDemoMode && realQueue.length === 0 && !realCurrent && !realPrep && stage === ST.IDLE;
+
+    if (isIdle) {
+      console.log("[Stage] Stage is idle. Starting 5-minute inactivity countdown...");
+      inactivityTimerRef.current = setTimeout(() => {
+        console.log("[Stage] 5 minutes inactivity reached. Activating Demo Mode!");
+        setIsDemoMode(true);
+        setDemoIndex(0);
+        setStage(ST.STINGER);
+      }, 300000); // 5 minutes
+    } else {
+      if (inactivityTimerRef.current) {
+        console.log("[Stage] Activity detected or stage state changed. Resetting inactivity timer.");
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, [hasStarted, isDemoMode, realQueue.length, realCurrent, realPrep, stage]);
 
   const startSession = () => {
-    const next = queue[0];
-    const newQueue = queue.slice(1);
-    setCurrent(next);
-    setQueue(newQueue);
-    setStage(ST.STINGER);
+    if (isDemoMode) {
+      setStage(ST.STINGER);
+    } else {
+      socket.emit('queue:next');
+    }
   };
 
   const nextSong = () => {
-    if (queue.length > 0) {
-      startSession();
+    if (isDemoMode) {
+      setDemoIndex(prev => (prev + 1) % DEMO_QUEUE.length);
+      setStage(ST.STINGER);
     } else {
-      setQueue(DEMO_QUEUE);
-      startSession();
+      socket.emit('queue:next');
     }
   };
 

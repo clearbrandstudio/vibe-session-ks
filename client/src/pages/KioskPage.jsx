@@ -169,7 +169,6 @@ const Particles = () => {
 export default function KioskPage() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [localQueue, setLocalQueue] = useState([]);
   const [activeLang, setActiveLang] = useState("all");
   const [activeCat, setActiveCat] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -279,19 +278,34 @@ export default function KioskPage() {
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [pendingSong, setPendingSong] = useState(null);
 
+  const queueSongToServer = (song) => {
+    if (serverQueue.some(s => s.videoId === song.videoId && s.singerName === singerName.trim())) {
+      showToast("Already queued this song under your name!");
+      return;
+    }
+    
+    socket.emit("queue:add", {
+      ...song,
+      singerName: singerName.trim()
+    });
+
+    setAddedSong({ song, position: serverQueue.length + 1 });
+    showToast(`Reserved "${song.title}"!`);
+  };
+
   const handleSongClick = (song) => {
     if (!singerName.trim()) {
       setPendingSong(song);
       setShowNamePrompt(true);
     } else {
-      addToLocalQueue(song);
+      queueSongToServer(song);
     }
   };
 
   const handleNameSubmit = (e) => {
     e.preventDefault();
     if (singerName.trim() && pendingSong) {
-      addToLocalQueue(pendingSong);
+      queueSongToServer(pendingSong);
       setPendingSong(null);
       setShowNamePrompt(false);
     } else if (!singerName.trim()) {
@@ -300,40 +314,10 @@ export default function KioskPage() {
     }
   };
 
-  const addToLocalQueue = (song) => {
-    if (localQueue.some(s => s.videoId === song.videoId)) {
-      showToast("Already in your list!");
-      return;
-    }
-    setLocalQueue(q => [...q, song]);
-    setAddedSong({ song, position: localQueue.length + 1 });
-  };
-
-  const removeFromLocalQueue = (videoId) => {
-    setLocalQueue(q => q.filter(s => s.videoId !== videoId));
+  const removeSongFromServer = (id) => {
+    socket.emit("queue:remove", { id });
     setCancelSong(null);
-  };
-
-  const confirmReservation = () => {
-    if (!singerName.trim()) {
-      setShakeInput(true);
-      setTimeout(() => setShakeInput(false), 400);
-      singerRef.current?.focus();
-      showToast("Enter your name first!");
-      return;
-    }
-    if (localQueue.length === 0) return;
-
-    localQueue.forEach(song => {
-      socket.emit("queue:add", {
-        ...song,
-        singerName: singerName.trim()
-      });
-    });
-
-    showToast(`Reserved ${localQueue.length} songs! Check the screen.`);
-    setLocalQueue([]);
-    // We keep the singer name for the session unless they clear it
+    showToast("Removed song from queue");
   };
 
   const saveSettings = async (key, bName, pText, duration) => {
@@ -431,7 +415,7 @@ export default function KioskPage() {
         <div className="flex items-center gap-3 shrink-0 ml-4">
           <button className="flex items-center gap-2 bg-[#8b5cf6]/7 border border-[#8b5cf6]/18 rounded-full px-4 py-1.5 font-syne font-bold text-[10px] tracking-wider uppercase">
             <span className="text-[#8B5CF6]">Queue</span>
-            <span className="bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] px-2 py-0.5 rounded-full text-white">{localQueue.length}</span>
+            <span className="bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] px-2 py-0.5 rounded-full text-white">{serverQueue.length}</span>
           </button>
         </div>
       </nav>
@@ -511,7 +495,7 @@ export default function KioskPage() {
                     animate={{ opacity: 1, scale: 1 }} 
                     transition={{ delay: (i % 9) * 0.05 }}
                     onClick={() => handleSongClick(song)}
-                    className={`group relative overflow-hidden rounded-2xl bg-[#8b5cf6]/5 border border-[#8b5cf6]/10 hover:border-[#d946ef]/40 transition-all cursor-pointer shadow-lg hover:shadow-[0_0_30px_rgba(217,70,239,0.15)] ${localQueue.some(s => s.videoId === song.videoId) ? 'bg-[#8b5cf6]/15 border-[#d946ef]/60 ring-2 ring-[#d946ef]/20' : ''}`}
+                    className={`group relative overflow-hidden rounded-2xl bg-[#8b5cf6]/5 border border-[#8b5cf6]/10 hover:border-[#d946ef]/40 transition-all cursor-pointer shadow-lg hover:shadow-[0_0_30px_rgba(217,70,239,0.15)] ${serverQueue.some(s => s.videoId === song.videoId) ? 'bg-[#8b5cf6]/15 border-[#d946ef]/60 ring-2 ring-[#d946ef]/20' : ''}`}
                   >
                     {/* Thumbnail 16:9 */}
                     <div className="aspect-video w-full overflow-hidden bg-black/40 relative">
@@ -519,7 +503,7 @@ export default function KioskPage() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                       
                       {/* Queue Status Overlay */}
-                      {localQueue.some(s => s.videoId === song.videoId) && (
+                      {serverQueue.some(s => s.videoId === song.videoId) && (
                         <div className="absolute inset-0 bg-[#d946ef]/20 backdrop-blur-[2px] flex items-center justify-center">
                            <div className="bg-white text-[#d946ef] font-syne font-bold text-[10px] px-3 py-1 rounded-full shadow-xl animate-pulse">ALREADY QUEUED</div>
                         </div>
@@ -549,14 +533,14 @@ export default function KioskPage() {
         <aside className="w-[300px] border-l border-[#8b5cf6]/18 bg-[#04020a]/68 backdrop-blur-3xl flex flex-col shrink-0">
           <div className="p-5 border-b border-[#8b5cf6]/18 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-syne text-[10px] font-bold uppercase tracking-[0.35em] text-[#8B5CF6]">My Reservation</h3>
-              <button onClick={() => setLocalQueue([])} className="text-[9px] text-[#8b5cf6]/35 hover:text-white transition-all">Clear All</button>
+              <h3 className="font-syne text-[10px] font-bold uppercase tracking-[0.35em] text-[#8B5CF6]">Stage Queue</h3>
+              <span className="text-[9px] text-[#8b5cf6]/50 uppercase font-bold">{serverQueue.length} active</span>
             </div>
             
             <div className={`relative ${shakeInput ? 'animate-[shake_0.3s_ease]' : ''}`}>
               <input 
                  ref={singerRef}
-                 className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#d946ef]/45 transition-all"
+                 className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 text-white placeholder-[#7c6f9a]/40 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#d946ef] transition-all"
                  placeholder="Your Name (e.g. Sam S.)"
                  value={singerName}
                  onChange={(e) => setSingerName(e.target.value)}
@@ -589,14 +573,14 @@ export default function KioskPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {localQueue.length === 0 ? (
+            {serverQueue.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3 opacity-20">
                 <span className="text-3xl">🎶</span>
-                <p className="text-[11px] text-center font-syne uppercase tracking-wider">Empty Reservation</p>
+                <p className="text-[11px] text-center font-syne uppercase tracking-wider">Queue is Empty</p>
               </div>
-            ) : localQueue.map((song, i) => (
+            ) : serverQueue.map((song, i) => (
               <motion.div 
-                key={song.videoId} 
+                key={song.id} 
                 initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                 className="group relative flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-transparent hover:border-[#ec4899]/18 transition-all"
               >
@@ -606,7 +590,7 @@ export default function KioskPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-bold truncate">{song.title}</div>
-                  <div className="text-[9px] text-[#7c6f9a] truncate">{song.channel}</div>
+                  <div className="text-[9px] text-[#7c6f9a] truncate">{song.singerName}</div>
                 </div>
                 <button 
                   onClick={() => setCancelSong(song)}
@@ -618,14 +602,9 @@ export default function KioskPage() {
             ))}
           </div>
 
-          <div className="p-5 border-t border-[#8b5cf6]/18 shrink-0">
-            <button 
-              disabled={localQueue.length === 0}
-              onClick={confirmReservation}
-              className={`w-full py-4 rounded-full font-syne font-bold text-[10px] tracking-[0.25em] uppercase text-white shadow-2xl transition-all ${localQueue.length > 0 ? 'bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] animate-[pulse_2s_infinite]' : 'bg-[#8b5cf6]/20 opacity-30 cursor-not-allowed'}`}
-            >
-              Reserve {localQueue.length} {localQueue.length === 1 ? 'Song' : 'Songs'}
-            </button>
+          <div className="p-5 border-t border-[#8b5cf6]/18 shrink-0 text-center bg-[#0c051a]/40">
+             <p className="text-[10px] font-syne font-bold uppercase tracking-wider text-[#c8b9e6]/50 mb-1">Select a song to book</p>
+             <p className="text-[9px] text-[#7c6f9a]/70 italic leading-relaxed">It will instantly sync to the stage screen.</p>
           </div>
         </aside>
       </div>
@@ -643,7 +622,7 @@ export default function KioskPage() {
                <h3 className="LuxeFont text-xl text-center mb-6">Remove this song?</h3>
                <div className="flex gap-4">
                   <button onClick={() => setCancelSong(null)} className="flex-1 py-3 rounded-full border border-[#8b5cf6]/18 text-[10px] font-bold uppercase tracking-widest text-[#F8F4FF]/60 hover:text-white transition-all">Keep</button>
-                  <button onClick={() => removeFromLocalQueue(cancelSong.videoId)} className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#EC4899] to-[#D946EF] text-white text-[10px] font-bold uppercase tracking-widest">Remove</button>
+                  <button onClick={() => removeSongFromServer(cancelSong.id)} className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#EC4899] to-[#D946EF] text-white text-[10px] font-bold uppercase tracking-widest">Remove</button>
                </div>
             </motion.div>
           </div>
@@ -660,7 +639,7 @@ export default function KioskPage() {
                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.2 }} className="text-4xl text-[#A78BFA]">✓</motion.span>
                 </div>
                 <h2 className="LuxeFont text-3xl mb-3 text-gradient-broadcast">Success!</h2>
-                <p className="text-[13px] text-[#c8b9e6]/60 mb-10 px-4 leading-relaxed">Song reserved at position <span className="text-[#D946EF] font-bold">#{addedSong.position}</span> in your local list.</p>
+                <p className="text-[13px] text-[#c8b9e6]/60 mb-10 px-4 leading-relaxed">Song reserved at position <span className="text-[#D946EF] font-bold">#{addedSong.position}</span> in the stage queue.</p>
                 <button onClick={() => setAddedSong(null)} className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg">Keep Searching</button>
              </motion.div>
            </div>
@@ -685,7 +664,7 @@ export default function KioskPage() {
                  <div className={`relative ${shakeInput ? 'animate-[shake_0.4s_ease]' : ''}`}>
                     <input 
                       autoFocus
-                      className="w-full bg-[#8b5cf6]/10 border border-[#8b5cf6]/25 rounded-2xl px-6 py-4 text-base text-center outline-none focus:border-[#d946ef] transition-all placeholder:text-[#7c6f9a]/40"
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/35 text-white rounded-2xl px-6 py-4 text-base text-center outline-none focus:border-[#d946ef] transition-all placeholder:text-[#7c6f9a]/40"
                       placeholder="Enter Your Name..."
                       value={singerName}
                       onChange={(e) => setSingerName(e.target.value)}
@@ -717,7 +696,7 @@ export default function KioskPage() {
                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Event / Show Title</label>
                    <input 
                       type="text"
-                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef] transition-all text-[#F8F4FF] placeholder-[#7c6f9a]/40"
                       placeholder="e.g. John's Birthday, Vibe Sessions Studio..."
                       value={tempBusinessName}
                       onChange={(e) => setTempBusinessName(e.target.value)}
@@ -728,7 +707,7 @@ export default function KioskPage() {
                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Slogan / Rolling Text Bar</label>
                    <input 
                       type="text"
-                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef] transition-all text-[#F8F4FF] placeholder-[#7c6f9a]/40"
                       placeholder="e.g. Get 20% off all drinks at the bar! 🎤"
                       value={tempPromoText}
                       onChange={(e) => setTempPromoText(e.target.value)}
@@ -738,7 +717,7 @@ export default function KioskPage() {
                  <div>
                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Singer Loading Time (Seconds)</label>
                    <select 
-                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/18 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef]/45 transition-all text-[#F8F4FF]"
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 rounded-2xl px-5 py-3 text-xs outline-none focus:border-[#d946ef] transition-all text-[#F8F4FF]"
                       value={tempPrepDuration}
                       onChange={(e) => setTempPrepDuration(parseInt(e.target.value))}
                    >
@@ -756,7 +735,7 @@ export default function KioskPage() {
                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">YouTube API Key</label>
                    <input 
                       type="password"
-                      className="w-full bg-[#8b5cf6]/8 border border-[#8b5cf6]/18 rounded-2xl px-5 py-3.5 text-xs outline-none focus:border-[#d946ef]/45 transition-all font-mono text-[#F8F4FF]"
+                      className="w-full bg-[#0c051a] border border-[#8b5cf6]/30 rounded-2xl px-5 py-3.5 text-xs outline-none focus:border-[#d946ef] transition-all font-mono text-[#F8F4FF] placeholder-[#7c6f9a]/40"
                       placeholder="Paste your key here..."
                       value={tempApiKey}
                       onChange={(e) => setTempApiKey(e.target.value)}
