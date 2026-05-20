@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import socket from "../socket";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -164,6 +164,48 @@ const Particles = () => {
     return <canvas ref={ref} className="fixed inset-0 z-4 pointer-events-none" />;
 };
 
+const QueueItem = ({ song, index, onCancel }) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      value={song}
+      dragListener={false}
+      dragControls={dragControls}
+      as="div"
+      className="group relative flex items-center gap-2.5 p-2 rounded-xl bg-white/5 border border-transparent hover:border-[#ec4899]/18 transition-all"
+    >
+      <div 
+        onPointerDown={(e) => dragControls.start(e)}
+        className="cursor-grab active:cursor-grabbing p-1 text-white/20 hover:text-white/60 transition-colors shrink-0"
+      >
+        <svg width="12" height="18" viewBox="0 0 12 18" fill="none">
+          <circle cx="2" cy="3" r="1.5" fill="currentColor"/>
+          <circle cx="2" cy="9" r="1.5" fill="currentColor"/>
+          <circle cx="2" cy="15" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="3" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="9" r="1.5" fill="currentColor"/>
+          <circle cx="10" cy="15" r="1.5" fill="currentColor"/>
+        </svg>
+      </div>
+      <div className="text-[9px] font-syne text-[#8b5cf6]/35 w-4 text-center shrink-0">{index + 1}</div>
+      <div className="w-10 h-7 rounded-lg overflow-hidden border border-white/5 shrink-0">
+        <img src={song.thumbnail} className="w-full h-full object-cover" />
+      </div>
+      <div className="flex-1 min-w-0 pr-6">
+        <div className="text-[10px] font-bold truncate">{song.title}</div>
+        <div className="text-[9px] text-[#7c6f9a] truncate">{song.singerName}</div>
+      </div>
+      <button 
+        onClick={() => onCancel(song)}
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#ec4899]/14 text-[#ec4899] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-[#ec4899]/25"
+      >
+        ✕
+      </button>
+    </Reorder.Item>
+  );
+};
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 export default function KioskPage() {
@@ -294,12 +336,8 @@ export default function KioskPage() {
   };
 
   const handleSongClick = (song) => {
-    if (!singerName.trim()) {
-      setPendingSong(song);
-      setShowNamePrompt(true);
-    } else {
-      queueSongToServer(song);
-    }
+    setPendingSong(song);
+    setShowNamePrompt(true);
   };
 
   const handleNameSubmit = (e) => {
@@ -318,6 +356,11 @@ export default function KioskPage() {
     socket.emit("queue:remove", { id });
     setCancelSong(null);
     showToast("Removed song from queue");
+  };
+
+  const handleReorder = (newQueue) => {
+    setServerQueue(newQueue);
+    socket.emit("queue:reorder", { queue: newQueue });
   };
 
   const saveSettings = async (key, bName, pText, duration) => {
@@ -572,35 +615,28 @@ export default function KioskPage() {
              )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
-            {serverQueue.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 gap-3 opacity-20">
-                <span className="text-3xl">🎶</span>
-                <p className="text-[11px] text-center font-syne uppercase tracking-wider">Queue is Empty</p>
-              </div>
-            ) : serverQueue.map((song, i) => (
-              <motion.div 
-                key={song.id} 
-                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                className="group relative flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-transparent hover:border-[#ec4899]/18 transition-all"
-              >
-                <div className="text-[9px] font-syne text-[#8b5cf6]/35 w-4 text-center">{i + 1}</div>
-                <div className="w-10 h-7 rounded-lg overflow-hidden border border-white/5">
-                  <img src={song.thumbnail} className="w-full h-full object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[10px] font-bold truncate">{song.title}</div>
-                  <div className="text-[9px] text-[#7c6f9a] truncate">{song.singerName}</div>
-                </div>
-                <button 
-                  onClick={() => setCancelSong(song)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#ec4899]/14 text-[#ec4899] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-[#ec4899]/25"
-                >
-                  ✕
-                </button>
-              </motion.div>
-            ))}
-          </div>
+          {serverQueue.length === 0 ? (
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center gap-3 opacity-20">
+              <span className="text-3xl">🎶</span>
+              <p className="text-[11px] text-center font-syne uppercase tracking-wider">Queue is Empty</p>
+            </div>
+          ) : (
+            <Reorder.Group 
+              values={serverQueue} 
+              onReorder={handleReorder} 
+              className="flex-1 overflow-y-auto p-4 space-y-2"
+              axis="y"
+            >
+              {serverQueue.map((song, i) => (
+                <QueueItem 
+                  key={song.id} 
+                  song={song} 
+                  index={i} 
+                  onCancel={setCancelSong} 
+                />
+              ))}
+            </Reorder.Group>
+          )}
 
           <div className="p-5 border-t border-[#8b5cf6]/18 shrink-0 text-center bg-[#0c051a]/40">
              <p className="text-[10px] font-syne font-bold uppercase tracking-wider text-[#c8b9e6]/50 mb-1">Select a song to book</p>

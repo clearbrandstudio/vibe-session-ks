@@ -341,6 +341,18 @@ io.on('connection', (socket) => {
     });
   });
 
+  // ── Reorder the queue
+  socket.on('queue:reorder', ({ queue }) => {
+    if (!Array.isArray(queue)) return;
+    room.queue = queue;
+    console.log(`[Queue - ${roomID}] Reordered queue. New length: ${room.queue.length}`);
+    io.to(roomID).emit('queue:updated', { 
+      queue: room.queue, 
+      currentSong: room.currentSong, 
+      currentPrep: room.currentPrep 
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`[Socket] Client disconnected: ${socket.id}`);
   });

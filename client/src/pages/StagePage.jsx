@@ -369,21 +369,20 @@ const Stinger = ({ current, onComplete }) => {
 };
 
 const Countdown = ({ current, onComplete }) => {
-  const [count, setCount] = useState(current.timeLeft || 15);
+  const count = current.timeLeft !== undefined ? current.timeLeft : 15;
   const [totalDuration] = useState(current.timeLeft || 15);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
-    if (count < 0) {
-      onComplete();
-      return;
-    }
-    const timer = setTimeout(() => {
-      setCount(prev => prev - 1);
-      setFlash(true);
-      setTimeout(() => setFlash(false), 180);
-    }, 1000);
+    setFlash(true);
+    const timer = setTimeout(() => setFlash(false), 180);
     return () => clearTimeout(timer);
+  }, [count]);
+
+  useEffect(() => {
+    if (count <= 0) {
+      onComplete();
+    }
   }, [count, onComplete]);
 
   const dasharray = 2 * Math.PI * 90;
@@ -614,6 +613,7 @@ export default function StagePage() {
   const [settings, setSettings] = useState(null);
 
   const inactivityTimerRef = useRef(null);
+  const lastPrepIdRef = useRef(null);
 
   // Sync Logic (Socket.io)
   useEffect(() => {
@@ -632,6 +632,7 @@ export default function StagePage() {
         } else if (data.currentPrep) {
           setIsDemoMode(false);
           setRealPrep(data.currentPrep);
+          lastPrepIdRef.current = data.currentPrep?.song?.id;
           setStage(ST.COUNTDOWN);
         } else {
           setStage(ST.IDLE);
@@ -653,7 +654,13 @@ export default function StagePage() {
       if (cp) {
         setIsDemoMode(false);
         setRealPrep(cp);
-        setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
+        const songId = cp?.song?.id;
+        if (songId && lastPrepIdRef.current !== songId) {
+          lastPrepIdRef.current = songId;
+          setStage(ST.STINGER);
+        } else {
+          setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
+        }
       }
       if (!cs && !cp && (!newQueue || newQueue.length === 0)) {
         setRealCurrent(null);
@@ -669,7 +676,14 @@ export default function StagePage() {
       setRealPrep(currentPrep);
       setRealCurrent(null);
       if (q) setRealQueue(q);
-      setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.STINGER);
+      
+      const songId = currentPrep?.song?.id;
+      if (songId && lastPrepIdRef.current !== songId) {
+        lastPrepIdRef.current = songId;
+        setStage(ST.STINGER);
+      } else {
+        setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.STINGER);
+      }
     };
 
     const onStateSync = ({ queue: q, currentSong: cs, currentPrep: cp }) => {
@@ -681,6 +695,7 @@ export default function StagePage() {
         setStage(ST.PLAYING);
       } else if (cp) {
         setIsDemoMode(false);
+        lastPrepIdRef.current = cp?.song?.id;
         setStage(prev => (prev === ST.COUNTDOWN || prev === ST.STINGER) ? prev : ST.COUNTDOWN);
       } else {
         if (!isDemoMode) {
