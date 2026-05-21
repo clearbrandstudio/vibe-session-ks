@@ -1143,146 +1143,7 @@ const PromoPlayingScreen = ({ video, onEnded, onPlaybackFailed, settings }) => {
 };
 
 
-// ──────────────────────────────────────────────
-// Promo Stinger Card Component — Cinematic Broadcast Style
-// ──────────────────────────────────────────────
-const PromoStingerCard = ({ promos = [], activeIndex = 0 }) => {
-  if (promos.length === 0) return null;
-  const promo = promos[activeIndex % promos.length];
-  
-  const themeColors = {
-    beer:      { border: 'border-amber-500/50',  glow: 'shadow-amber-500/30',  text: 'text-amber-400',  bg: 'from-amber-950/60 to-amber-900/20',  pulse: 'rgba(245,158,11,0.35)',  icon: '🍺' },
-    dish:      { border: 'border-red-500/50',    glow: 'shadow-red-500/30',    text: 'text-red-400',    bg: 'from-red-950/60 to-red-900/20',      pulse: 'rgba(239,68,68,0)',      icon: '🍽️' },
-    happyhour: { border: 'border-pink-500/50',   glow: 'shadow-pink-500/30',   text: 'text-pink-400',   bg: 'from-pink-950/60 to-pink-900/20',    pulse: 'rgba(236,72,153,0.35)',  icon: '⏰' },
-    custom:    { border: 'border-purple-500/50', glow: 'shadow-purple-500/30', text: 'text-purple-400', bg: 'from-purple-950/60 to-purple-900/20', pulse: 'rgba(139,92,246,0)',     icon: '✨' }
-  };
-  
-  const theme = themeColors[promo.type] || themeColors.custom;
-  const isTimeboxed = promo.type === 'beer' || promo.type === 'happyhour';
-  
-  // Compute countdown display from schedule.endHour
-  const getTimeLabel = () => {
-    if (!promo.schedule || promo.schedule.endHour === undefined) return null;
-    const endH = promo.schedule.endHour;
-    const suffix = endH >= 12 ? 'PM' : 'AM';
-    const displayH = endH > 12 ? endH - 12 : endH === 0 ? 12 : endH;
-    return `Ends at ${displayH}:00 ${suffix}`;
-  };
-  const timeLabel = getTimeLabel();
-  
-  return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={promo.id}
-        // Cinematic broadcast drop-in: fall from above with slight rotation
-        initial={{ opacity: 0, y: -120, rotate: -4, scale: 0.88 }}
-        animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
-        exit={{ opacity: 0, x: 220, rotate: 6, scale: 0.88 }}
-        transition={{ type: 'spring', stiffness: 160, damping: 18, mass: 0.9 }}
-        className={`fixed right-10 top-[18%] z-50 w-72 rounded-2xl flex flex-col gap-0 border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-2xl ${theme.glow} overflow-hidden backdrop-blur-xl`}
-        style={isTimeboxed ? {
-          boxShadow: `0 0 40px ${theme.pulse}, 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)`
-        } : {
-          boxShadow: `0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)`
-        }}
-      >
-        {/* Top shimmer bar */}
-        <div className="absolute top-0 left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-        
-        {/* Pulsing halo ring for time-sensitive promos */}
-        {isTimeboxed && (
-          <motion.div
-            className="absolute -inset-1 rounded-2xl pointer-events-none"
-            animate={{ opacity: [0.4, 0.9, 0.4] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ border: `2px solid ${theme.pulse}`, borderRadius: '1rem', filter: `blur(3px)` }}
-          />
-        )}
-
-        {/* Image section */}
-        {promo.imageUrl && (
-          <div className="relative w-full h-40 overflow-hidden">
-            <img 
-              src={promo.imageUrl} 
-              alt={promo.title} 
-              className="w-full h-full object-cover scale-105"
-            />
-            {/* Gradient fade to card body */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-            
-            {/* Badge */}
-            {promo.badgeText && (
-              <motion.span 
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-                className="absolute top-3 left-3 text-[9px] font-syne font-extrabold uppercase px-3 py-1.5 rounded-full text-white shadow-lg flex items-center gap-1.5"
-                style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
-              >
-                {theme.icon} {promo.badgeText}
-              </motion.span>
-            )}
-
-            {/* Time-sensitive label in image corner */}
-            {timeLabel && (
-              <span className={`absolute bottom-3 right-3 text-[8px] font-syne font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-black/70 border border-white/10 ${theme.text} backdrop-blur-sm flex items-center gap-1`}>
-                ⏱ {timeLabel}
-              </span>
-            )}
-          </div>
-        )}
-        
-        {/* Card body */}
-        <div className="p-4 space-y-3">
-          <div className="space-y-0.5">
-            <span className={`text-[9px] font-syne uppercase tracking-wider ${theme.text} font-bold`}>{promo.subtitle || 'SPECIAL OFFER'}</span>
-            <h3 className="font-syne font-extrabold text-white text-[15px] leading-tight">{promo.title}</h3>
-          </div>
-          
-          {/* Price row with shimmer effect */}
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-baseline gap-2">
-              <span 
-                className="font-syne font-black text-2xl text-white relative overflow-hidden"
-                style={{ textShadow: '0 0 20px rgba(255,255,255,0.3)' }}
-              >
-                {/* Price shimmer sweep */}
-                <motion.span
-                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none"
-                  animate={{ x: ['-100%', '200%'] }}
-                  transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 1.5, ease: 'easeInOut' }}
-                  style={{ width: '60%' }}
-                />
-                {promo.price}
-              </span>
-              {promo.originalPrice && (
-                <span className="font-dm text-xs text-white/35 line-through">{promo.originalPrice}</span>
-              )}
-            </div>
-            <span className="text-[9px] font-syne tracking-widest text-white/40 uppercase border border-white/10 px-2 py-1 rounded-lg">ORDER NOW</span>
-          </div>
-        </div>
-        
-        {/* Pagination dots — only show if multiple promos */}
-        {promos.length > 1 && (
-          <div className="flex justify-center gap-1.5 pb-3">
-            {promos.map((_, i) => (
-              <motion.div
-                key={i}
-                animate={{ 
-                  width: i === (activeIndex % promos.length) ? 16 : 5,
-                  opacity: i === (activeIndex % promos.length) ? 1 : 0.3
-                }}
-                transition={{ duration: 0.3 }}
-                className="h-[3px] rounded-full bg-white"
-              />
-            ))}
-          </div>
-        )}
-      </motion.div>
-    </AnimatePresence>
-  );
-};
+// PromoStingerCard component removed as it is now replaced by the dynamic PromoCardOverlay and PromoCollageOverlay in PlayingScreen.
 
 
 // --- MAIN COMPONENT ---
@@ -1301,7 +1162,6 @@ export default function StagePage() {
 
   // Dynamic Content States (Improvement #2 & #3)
   const [promos, setPromos] = useState([]);
-  const [activePromoIndex, setActivePromoIndex] = useState(0);
   const [idlePlaylist, setIdlePlaylist] = useState([]);
   const [idleIndex, setIdleIndex] = useState(0);
 
@@ -1782,11 +1642,6 @@ export default function StagePage() {
         <div className="w-1.5 h-1.5 bg-[#db2777] rounded-full animate-pulse" />
         {settings?.businessName || 'Vibe Sessions Studio'}
       </div>
-
-      {/* Dynamic Stinger Card overlay for dishes/drinks promotions */}
-      {(stage === ST.PLAYING || stage === ST.IDLE || stage === ST.PROMO_PLAYING) && activePromos.length > 0 && (
-        <PromoStingerCard promos={activePromos} activeIndex={activePromoIndex} />
-      )}
 
       <div className="relative z-10 w-full h-full flex items-center justify-center">
         <AnimatePresence mode="wait">
