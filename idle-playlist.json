@@ -1,0 +1,90 @@
+{
+  "rooms": {
+    "default": [
+      {
+        "id": "salamin-salamin",
+        "videoId": "Jm53M7d4B6Q",
+        "title": "BINI | 'Salamin, Salamin' Official Music Video",
+        "thumbnail": "https://i.ytimg.com/vi/Jm53M7d4B6Q/hqdefault.jpg",
+        "channel": "BINI Official"
+      },
+      {
+        "id": "gento",
+        "videoId": "Pg-mI1NqV5E",
+        "title": "SB19 'GENTO' Official Music Video",
+        "thumbnail": "https://i.ytimg.com/vi/Pg-mI1NqV5E/hqdefault.jpg",
+        "channel": "SB19 Official"
+      },
+      {
+        "id": "pantropiko",
+        "videoId": "XsM5E9_4n30",
+        "title": "BINI | 'Pantropiko' Performance Video",
+        "thumbnail": "https://i.ytimg.com/vi/XsM5E9_4n30/hqdefault.jpg",
+        "channel": "BINI Official"
+      },
+      {
+        "id": "super-shy",
+        "videoId": "ArmDp-zijFI",
+        "title": "NewJeans (뉴진스) 'Super Shy' Official MV",
+        "thumbnail": "https://i.ytimg.com/vi/ArmDp-zijFI/hqdefault.jpg",
+        "channel": "HYBE LABELS"
+      },
+      {
+        "id": "how-you-like-that",
+        "videoId": "ioNng23DkIM",
+        "title": "BLACKPINK - 'How You Like That' M/V",
+        "thumbnail": "https://i.ytimg.com/vi/ioNng23DkIM/hqdefault.jpg",
+        "channel": "BLACKPINK"
+      },
+      {
+        "id": "dynamite",
+        "videoId": "gdZLi9oWNZg",
+        "title": "BTS (방탄소년단) 'Dynamite' Official MV",
+        "thumbnail": "https://i.ytimg.com/vi/gdZLi9oWNZg/hqdefault.jpg",
+        "channel": "HYBE LABELS"
+      },
+      {
+        "id": "boni-na-na-na",
+        "videoId": "vPwaXytZcgI",
+        "title": "BINI | 'Na Na Na' Official Music Video",
+        "thumbnail": "https://i.ytimg.com/vi/vPwaXytZcgI/hqdefault.jpg",
+        "channel": "BINI Official"
+      },
+      {
+        "id": "mapa-sb19",
+        "videoId": "FqbDWvSKASQ",
+        "title": "SB19 'MAPA' Official Music Video",
+        "thumbnail": "https://i.ytimg.com/vi/FqbDWvSKASQ/hqdefault.jpg",
+        "channel": "SB19 Official"
+      },
+      {
+        "id": "lucky7-hori7on",
+        "videoId": "N_mL-FiMerI",
+        "title": "HORI7ON - 'LUCKY 7' Official MV",
+        "thumbnail": "https://i.ytimg.com/vi/N_mL-FiMerI/hqdefault.jpg",
+        "channel": "HORI7ON"
+      },
+      {
+        "id": "ditto-newjeans",
+        "videoId": "pSUydWEqKwE",
+        "title": "NewJeans (뉴진스) 'Ditto' Official MV",
+        "thumbnail": "https://i.ytimg.com/vi/pSUydWEqKwE/hqdefault.jpg",
+        "channel": "HYBE LABELS"
+      },
+      {
+        "id": "flower-jisoo",
+        "videoId": "lVEsJLuDKmg",
+        "title": "JISOO - '꽃 (FLOWER)' M/V",
+        "thumbnail": "https://i.ytimg.com/vi/lVEsJLuDKmg/hqdefault.jpg",
+        "channel": "BLACKPINK"
+      },
+      {
+        "id": "pink-venom",
+        "videoId": "tyR_sCVpIco",
+        "title": "BLACKPINK - 'Pink Venom' M/V",
+        "thumbnail": "https://i.ytimg.com/vi/tyR_sCVpIco/hqdefault.jpg",
+        "channel": "BLACKPINK"
+      }
+    ]
+  }
+}

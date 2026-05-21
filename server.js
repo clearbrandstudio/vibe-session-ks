@@ -151,37 +151,133 @@ app.get('/api/feed', (req, res) => {
 // ──────────────────────────────────────────────
 // REST – Settings (Per-Room)
 // ──────────────────────────────────────────────
+// ──────────────────────────────────────────────
+// YouTube Embeddability Checker & Cache (Improvement #5)
+// ──────────────────────────────────────────────
+const embeddableCache = new Map(); // videoId -> boolean
+
+async function isVideoEmbeddable(videoId) {
+  if (!videoId) return false;
+  if (embeddableCache.has(videoId)) {
+    return embeddableCache.get(videoId);
+  }
+  try {
+    const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+    const res = await fetch(url);
+    const isEmbeddable = res.status === 200;
+    embeddableCache.set(videoId, isEmbeddable);
+    console.log(`[oEmbed] Video ${videoId} embeddability check: ${isEmbeddable}`);
+    return isEmbeddable;
+  } catch (err) {
+    console.error(`[oEmbed] Error checking embeddability for ${videoId}:`, err);
+    return true; // Default to true on network failure
+  }
+}
+
+async function findAlternativeEmbeddable(query, originalVideoId) {
+  try {
+    console.log(`[oEmbed] Finding alternative for "${query}"`);
+    let results = [];
+    
+    const settingsPath = path.join(__dirname, 'settings.json');
+    let apiKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YT_API_KEY || null;
+    if (fs.existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        if (settings.youtubeApiKey && settings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE') {
+          apiKey = settings.youtubeApiKey;
+        }
+      } catch (e) {}
+    }
+    
+    if (apiKey && apiKey !== 'YOUR_YOUTUBE_API_KEY_HERE' && apiKey.trim().length > 10) {
+      const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query + ' karaoke')}&type=video&maxResults=5&key=${apiKey}`);
+      const data = await response.json();
+      if (data.items) {
+        results = data.items.map(v => ({
+          videoId: v.id.videoId,
+          title: v.snippet.title,
+          channel: v.snippet.channelTitle,
+          thumbnail: v.snippet.thumbnails.high.url
+        }));
+      }
+    } else {
+      const r = await ytSearch(query + ' karaoke');
+      results = r.videos.slice(0, 5).map(v => ({
+        videoId: v.videoId,
+        title: v.title,
+        channel: v.author.name,
+        thumbnail: v.thumbnail
+      }));
+    }
+    
+    for (const video of results) {
+      if (video.videoId === originalVideoId) continue;
+      const ok = await isVideoEmbeddable(video.videoId);
+      if (ok) {
+        return video;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error(`[oEmbed] Alt search error:`, err);
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────
+// REST – Settings (Per-Room with Display Presets)
+// ──────────────────────────────────────────────
 app.get('/api/settings', (req, res) => {
   const roomID = req.query.room || 'default';
   const envKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YT_API_KEY || '';
   try {
     const settingsPath = path.join(__dirname, 'settings.json');
-    if (!fs.existsSync(settingsPath)) {
-      return res.json({ youtubeApiKey: envKey, businessName: 'Vibe Sessions Studio', promoText: '', prepDuration: 15, vignette: 35 });
-    }
-    const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    // If it's a legacy flat file, convert it to room-based
-    if (!allSettings.rooms) {
-       const legacy = { ...allSettings };
-       if (!legacy.youtubeApiKey || legacy.youtubeApiKey === 'YOUR_YOUTUBE_API_KEY_HERE') {
-         legacy.youtubeApiKey = envKey;
-       }
-       legacy.prepDuration = parseInt(legacy.prepDuration) || 15;
-       if (legacy.vignette === undefined) legacy.vignette = 35;
-       res.json(legacy);
-       return;
-    }
-    const settings = allSettings.rooms[roomID] || allSettings.rooms['default'] || {};
-    const finalKey = allSettings.youtubeApiKey && allSettings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE'
-      ? allSettings.youtubeApiKey
-      : envKey;
-    res.json({
+    
+    // Bar-tuned defaults — brighter, less overlay, softer vignette
+    const DEFAULTS = {
       businessName: 'Vibe Sessions Studio',
       promoText: '',
       prepDuration: 15,
-      vignette: 35,
+      vignette: 25,
+      brightness: 115,
+      contrast: 100,
+      overlayOpacity: 25,
+      ambientMode: 'bar'
+    };
+    
+    if (!fs.existsSync(settingsPath)) {
+      return res.json({ 
+        ...DEFAULTS,
+        youtubeApiKeySet: !!envKey  // Only expose whether key exists, not the key itself
+      });
+    }
+    const allSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    
+    // Resolve the actual API key (server-side only)
+    const resolvedKey = (allSettings.youtubeApiKey && allSettings.youtubeApiKey !== 'YOUR_YOUTUBE_API_KEY_HERE')
+      ? allSettings.youtubeApiKey
+      : envKey;
+    
+    // Legacy support (flat settings.json without rooms)
+    if (!allSettings.rooms) {
+       const legacy = { ...DEFAULTS, ...allSettings };
+       legacy.prepDuration = parseInt(legacy.prepDuration) || 15;
+       // Security: redact API key from browser response
+       delete legacy.youtubeApiKey;
+       legacy.youtubeApiKeySet = !!resolvedKey;
+       res.json(legacy);
+       return;
+    }
+    
+    const settings = allSettings.rooms[roomID] || allSettings.rooms['default'] || {};
+    
+    res.json({
+      ...DEFAULTS,
       ...settings,
-      youtubeApiKey: finalKey
+      // Security: never expose the raw API key to the browser
+      youtubeApiKey: undefined,
+      youtubeApiKeySet: !!resolvedKey
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load settings' });
@@ -191,7 +287,18 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
   const roomID = req.query.room || 'default';
   try {
-    const { youtubeApiKey, businessName, promoText, prepDuration, vignette } = req.body;
+    const { 
+      youtubeApiKey, 
+      businessName, 
+      promoText, 
+      prepDuration, 
+      vignette,
+      brightness,
+      contrast,
+      overlayOpacity,
+      ambientMode
+    } = req.body;
+    
     const settingsPath = path.join(__dirname, 'settings.json');
     let allSettings = { rooms: {} };
     if (fs.existsSync(settingsPath)) {
@@ -199,26 +306,273 @@ app.post('/api/settings', (req, res) => {
       if (!allSettings.rooms) allSettings = { youtubeApiKey: allSettings.youtubeApiKey, rooms: { 'default': allSettings } };
     }
     
-    if (youtubeApiKey) allSettings.youtubeApiKey = youtubeApiKey;
+    // Only update the API key if a real new value is submitted (non-empty, non-masked)
+    if (youtubeApiKey && youtubeApiKey.trim().length > 5 && !youtubeApiKey.includes('•')) {
+      allSettings.youtubeApiKey = youtubeApiKey.trim();
+    }
     
+    // Bar-tuned defaults (brighter than previous defaults)
+    const prev = allSettings.rooms[roomID] || {};
     allSettings.rooms[roomID] = {
-      ...allSettings.rooms[roomID],
-      businessName: businessName || (allSettings.rooms[roomID]?.businessName || 'Vibe Sessions Studio'),
-      promoText: promoText !== undefined ? promoText : (allSettings.rooms[roomID]?.promoText || ''),
-      prepDuration: parseInt(prepDuration) || (allSettings.rooms[roomID]?.prepDuration || 15),
-      vignette: vignette !== undefined ? parseInt(vignette) : (allSettings.rooms[roomID]?.vignette !== undefined ? parseInt(allSettings.rooms[roomID].vignette) : 35)
+      ...prev,
+      businessName: businessName || prev.businessName || 'Vibe Sessions Studio',
+      promoText: promoText !== undefined ? promoText : (prev.promoText || ''),
+      prepDuration: parseInt(prepDuration) || prev.prepDuration || 15,
+      vignette: vignette !== undefined ? parseInt(vignette) : (prev.vignette !== undefined ? parseInt(prev.vignette) : 25),
+      brightness: brightness !== undefined ? parseInt(brightness) : (prev.brightness !== undefined ? parseInt(prev.brightness) : 115),
+      contrast: contrast !== undefined ? parseInt(contrast) : (prev.contrast !== undefined ? parseInt(prev.contrast) : 100),
+      overlayOpacity: overlayOpacity !== undefined ? parseInt(overlayOpacity) : (prev.overlayOpacity !== undefined ? parseInt(prev.overlayOpacity) : 25),
+      ambientMode: ambientMode || prev.ambientMode || 'bar'
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
     console.log(`[Settings] Updated Config for Room: ${roomID}`);
     
-    // Broadcast to that specifically connected room
-    io.to(roomID).emit('settings:updated', allSettings.rooms[roomID]);
+    // Broadcast to connected room (omit raw API key from broadcast too)
+    const broadcastPayload = { ...allSettings.rooms[roomID] };
+    delete broadcastPayload.youtubeApiKey;
+    io.to(roomID).emit('settings:updated', broadcastPayload);
     
-    res.json({ success: true, message: 'Settings saved and synced!', settings: allSettings.rooms[roomID] });
+    res.json({ 
+      success: true, 
+      message: 'Settings saved and synced!', 
+      settings: broadcastPayload,
+      youtubeApiKeySet: !!(allSettings.youtubeApiKey)
+    });
   } catch (err) {
     console.error('[Settings] Save error:', err);
     res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// REST – Promotional Cards API (Improvement #2)
+// ──────────────────────────────────────────────
+app.get('/api/promos', (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const promosPath = path.join(__dirname, 'promos.json');
+    if (!fs.existsSync(promosPath)) {
+      return res.json([]);
+    }
+    const data = JSON.parse(fs.readFileSync(promosPath, 'utf8'));
+    const promos = (data.rooms && data.rooms[roomID]) || (data.rooms && data.rooms['default']) || [];
+    res.json(promos);
+  } catch (err) {
+    console.error('Failed to read promos:', err);
+    res.status(500).json({ error: 'Failed to load promos' });
+  }
+});
+
+app.post('/api/promos', (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const promosList = req.body;
+    if (!Array.isArray(promosList)) {
+      return res.status(400).json({ error: 'Body must be an array of promos' });
+    }
+    
+    const promosPath = path.join(__dirname, 'promos.json');
+    let data = { rooms: {} };
+    if (fs.existsSync(promosPath)) {
+      data = JSON.parse(fs.readFileSync(promosPath, 'utf8'));
+      if (!data.rooms) data = { rooms: { 'default': [] } };
+    }
+    
+    data.rooms[roomID] = promosList;
+    fs.writeFileSync(promosPath, JSON.stringify(data, null, 2));
+    
+    // Broadcast updates via websocket
+    io.to(roomID).emit('promos:updated', promosList);
+    res.json({ success: true, promos: promosList });
+  } catch (err) {
+    console.error('Failed to save promos:', err);
+    res.status(500).json({ error: 'Failed to save promos' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// REST – Idle Playlist API (Improvement #3)
+// ──────────────────────────────────────────────
+app.get('/api/idle-playlist', (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const playlistPath = path.join(__dirname, 'idle-playlist.json');
+    if (!fs.existsSync(playlistPath)) {
+      return res.json([]);
+    }
+    const data = JSON.parse(fs.readFileSync(playlistPath, 'utf8'));
+    const playlist = (data.rooms && data.rooms[roomID]) || (data.rooms && data.rooms['default']) || [];
+    res.json(playlist);
+  } catch (err) {
+    console.error('Failed to read idle playlist:', err);
+    res.status(500).json({ error: 'Failed to load idle playlist' });
+  }
+});
+
+app.post('/api/idle-playlist', (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const playlist = req.body;
+    if (!Array.isArray(playlist)) {
+      return res.status(400).json({ error: 'Body must be an array' });
+    }
+    
+    const playlistPath = path.join(__dirname, 'idle-playlist.json');
+    let data = { rooms: {} };
+    if (fs.existsSync(playlistPath)) {
+      data = JSON.parse(fs.readFileSync(playlistPath, 'utf8'));
+      if (!data.rooms) data = { rooms: { 'default': [] } };
+    }
+    
+    data.rooms[roomID] = playlist;
+    fs.writeFileSync(playlistPath, JSON.stringify(data, null, 2));
+    
+    // Broadcast updates
+    io.to(roomID).emit('idle-playlist:updated', playlist);
+    res.json({ success: true, playlist });
+  } catch (err) {
+    console.error('Failed to save idle playlist:', err);
+    res.status(500).json({ error: 'Failed to save idle playlist' });
+  }
+});
+
+app.post('/api/idle-playlist/add', async (req, res) => {
+  const roomID = req.query.room || 'default';
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'url is required' });
+  }
+  
+  let videoId = '';
+  const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+  if (match) {
+    videoId = match[1];
+  } else if (url.trim().length === 11) {
+    videoId = url.trim();
+  }
+  
+  if (!videoId) {
+    return res.status(400).json({ error: 'Invalid YouTube URL or Video ID' });
+  }
+  
+  try {
+    let title = 'YouTube Video';
+    let channel = 'Unknown';
+    let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    
+    try {
+      const searchRes = await ytSearch({ videoId });
+      if (searchRes) {
+        title = searchRes.title;
+        channel = searchRes.author.name;
+        thumbnail = searchRes.thumbnail;
+      }
+    } catch (e) {
+      console.error('[Idle Playlist] yt-search details error:', e);
+    }
+    
+    const playlistPath = path.join(__dirname, 'idle-playlist.json');
+    let data = { rooms: {} };
+    if (fs.existsSync(playlistPath)) {
+      data = JSON.parse(fs.readFileSync(playlistPath, 'utf8'));
+    }
+    if (!data.rooms) data.rooms = {};
+    if (!data.rooms[roomID]) data.rooms[roomID] = [];
+    
+    if (!data.rooms[roomID].some(v => v.videoId === videoId)) {
+      data.rooms[roomID].push({
+        id: `idle-${Date.now()}`,
+        videoId,
+        title,
+        channel,
+        thumbnail
+      });
+      fs.writeFileSync(playlistPath, JSON.stringify(data, null, 2));
+      io.to(roomID).emit('idle-playlist:updated', data.rooms[roomID]);
+    }
+    
+    res.json({ success: true, playlist: data.rooms[roomID] });
+  } catch (err) {
+    console.error('Failed to add to idle playlist:', err);
+    res.status(500).json({ error: 'Failed to add to idle playlist' });
+  }
+});
+
+app.delete('/api/idle-playlist/remove', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const { videoId } = req.query;
+  if (!videoId) {
+    return res.status(400).json({ error: 'videoId is required' });
+  }
+  
+  try {
+    const playlistPath = path.join(__dirname, 'idle-playlist.json');
+    if (!fs.existsSync(playlistPath)) {
+      return res.json({ success: true, playlist: [] });
+    }
+    
+    const data = JSON.parse(fs.readFileSync(playlistPath, 'utf8'));
+    if (data.rooms && data.rooms[roomID]) {
+      data.rooms[roomID] = data.rooms[roomID].filter(v => v.videoId !== videoId);
+      fs.writeFileSync(playlistPath, JSON.stringify(data, null, 2));
+      io.to(roomID).emit('idle-playlist:updated', data.rooms[roomID]);
+    }
+    
+    res.json({ success: true, playlist: (data.rooms && data.rooms[roomID]) || [] });
+  } catch (err) {
+    console.error('Failed to remove from idle playlist:', err);
+    res.status(500).json({ error: 'Failed to remove from idle playlist' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// REST – Idle Playlist Embeddability Verifier
+// Checks each video via oEmbed and returns a report
+// ──────────────────────────────────────────────
+app.get('/api/idle-playlist/verify', async (req, res) => {
+  const roomID = req.query.room || 'default';
+  try {
+    const playlistPath = path.join(__dirname, 'idle-playlist.json');
+    if (!fs.existsSync(playlistPath)) {
+      return res.json({ results: [] });
+    }
+    const data = JSON.parse(fs.readFileSync(playlistPath, 'utf8'));
+    const playlist = (data.rooms && data.rooms[roomID]) || (data.rooms && data.rooms['default']) || [];
+    
+    console.log(`[Verify] Checking ${playlist.length} idle playlist videos for embeddability...`);
+    const results = await Promise.all(
+      playlist.map(async (video) => {
+        const embeddable = await isVideoEmbeddable(video.videoId);
+        return { videoId: video.videoId, title: video.title, embeddable };
+      })
+    );
+    
+    const ok = results.filter(r => r.embeddable).length;
+    const blocked = results.filter(r => !r.embeddable).length;
+    console.log(`[Verify] Result: ${ok} embeddable, ${blocked} blocked.`);
+    
+    res.json({ results, summary: { ok, blocked, total: results.length } });
+  } catch (err) {
+    console.error('[Verify] Error verifying idle playlist:', err);
+    res.status(500).json({ error: 'Failed to verify playlist' });
+  }
+});
+
+// ──────────────────────────────────────────────
+// REST – Find Embeddability Proxy (Improvement #5)
+// ──────────────────────────────────────────────
+app.get('/api/find-embeddable', async (req, res) => {
+  const q = req.query.q;
+  const originalVideoId = req.query.originalVideoId;
+  if (!q) {
+    return res.status(400).json({ error: 'Query parameter q is required' });
+  }
+  const alt = await findAlternativeEmbeddable(q, originalVideoId);
+  if (alt) {
+    res.json({ success: true, video: alt });
+  } else {
+    res.json({ success: false, message: 'No embeddable alternatives found' });
   }
 });
 
@@ -291,12 +645,28 @@ app.get('/api/state', (req, res) => {
 // REST – HTTP fallback for queue:add
 // (used when WebSocket is blocked by reverse proxy)
 // ──────────────────────────────────────────────
-app.post('/api/queue/add', (req, res) => {
+app.post('/api/queue/add', async (req, res) => {
   const roomID = req.query.room || req.body.room || 'default';
-  const { videoId, title, thumbnail, channel, singerName } = req.body;
+  let { videoId, title, thumbnail, channel, singerName } = req.body;
 
   if (!videoId || !singerName || !singerName.trim()) {
     return res.status(400).json({ error: 'videoId and singerName are required' });
+  }
+
+  // Pre-validate embeddability (Strategy B)
+  let wasSwapped = false;
+  const isEmbeddable = await isVideoEmbeddable(videoId);
+  if (!isEmbeddable) {
+    console.log(`[Queue HTTP - ${roomID}] Video ${videoId} is restricted. Seeking alternative...`);
+    const alt = await findAlternativeEmbeddable(title || singerName, videoId);
+    if (alt) {
+      videoId = alt.videoId;
+      title = alt.title;
+      thumbnail = alt.thumbnail;
+      channel = alt.channel;
+      wasSwapped = true;
+      console.log(`[Queue HTTP - ${roomID}] Swapped to embeddable: ${videoId}`);
+    }
   }
 
   const room = getRoomState(roomID);
@@ -308,6 +678,7 @@ app.post('/api/queue/add', (req, res) => {
     channel,
     singerName: singerName.trim(),
     addedAt: new Date().toISOString(),
+    wasSwapped
   };
 
   room.queue.push(entry);
@@ -326,6 +697,7 @@ app.post('/api/queue/add', (req, res) => {
 
   res.json({
     success: true,
+    wasSwapped,
     queue: room.queue,
     currentSong: room.currentSong,
     currentPrep: room.currentPrep,
@@ -427,9 +799,25 @@ io.on('connection', (socket) => {
   });
 
   // ── Add song to queue
-  socket.on('queue:add', (data) => {
-    const { videoId, title, thumbnail, channel, singerName } = data;
+  socket.on('queue:add', async (data) => {
+    let { videoId, title, thumbnail, channel, singerName } = data;
     if (!videoId || !singerName) return;
+
+    // Pre-validate embeddability (Strategy B)
+    let wasSwapped = false;
+    const isEmbeddable = await isVideoEmbeddable(videoId);
+    if (!isEmbeddable) {
+      console.log(`[Queue Socket - ${roomID}] Video ${videoId} is restricted. Seeking alternative...`);
+      const alt = await findAlternativeEmbeddable(title || singerName, videoId);
+      if (alt) {
+        videoId = alt.videoId;
+        title = alt.title;
+        thumbnail = alt.thumbnail;
+        channel = alt.channel;
+        wasSwapped = true;
+        console.log(`[Queue Socket - ${roomID}] Swapped to embeddable: ${videoId}`);
+      }
+    }
 
     const entry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -439,6 +827,7 @@ io.on('connection', (socket) => {
       channel,
       singerName: singerName.trim(),
       addedAt: new Date().toISOString(),
+      wasSwapped
     };
 
     room.queue.push(entry);

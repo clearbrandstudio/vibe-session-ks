@@ -16,14 +16,9 @@ const ST = {
   PROMO_PLAYING: 'promo_playing'
 };
 
-const VIBE_STUDIO_COVERS = [
-  { videoId: "mdMWwFN-rtQ", title: "Yesterday Once More", artist: "JOED (The Carpenters Cover)" },
-  { videoId: "Ph2aBlmS3Cc", title: "So Slow", artist: "Mel (Freestyle Acoustic Cover)" },
-  { videoId: "bo_efYhYU2A", title: "Shallow", artist: "Acoustic Session (Lady Gaga Cover)" },
-  { videoId: "4NRXx6U8ABQ", title: "Blinding Lights", artist: "Synthpop Session (The Weeknd Cover)" },
-  { videoId: "hLQl3WQQoQ0", title: "Someone Like You", artist: "Piano Session (Adele Cover)" },
-  { videoId: "TUVcZfQe-Kw", title: "Levitating", artist: "Dance Session (Dua Lipa Cover)" }
-];
+// Idle playlist is managed exclusively from idle-playlist.json via /api/idle-playlist
+// No hardcoded cover fallback — admin manages the bucket list in the Admin Console
+
 
 const DEMO_QUEUE = [
   { id: 1, singerName: "Sarah K.",  title: "Bohemian Rhapsody", artist: "Queen", videoId: "fJ9rUzIMcZQ" },
@@ -36,12 +31,17 @@ const DEMO_QUEUE = [
 
 // --- ATMOSPHERE COMPONENTS ---
 
-const Atmo = ({ vignette }) => {
+const Atmo = ({ vignette, brightness }) => {
   const finalVignette = vignette !== undefined ? vignette : 35;
+  const brightVal = brightness !== undefined ? brightness : 100;
+  // If brightness is set higher (e.g. 150%), reduce the atmospheric mesh opacity to let the screen be cleaner/brighter.
+  const factor = Math.max(0.1, 100 / brightVal);
+  const meshOpacity = 0.55 * factor;
+  
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden bg-[#04020a] z-0">
       {/* Layer 1: Animated Mesh Gradients */}
-      <div className="absolute inset-0 opacity-55">
+      <div className="absolute inset-0 transition-opacity duration-500" style={{ opacity: meshOpacity }}>
         <div 
           className="absolute inset-0"
           style={{
@@ -514,7 +514,7 @@ const NPBar = ({ current, queue = [] }) => {
        <span className="font-syne text-[10px] text-white/20 tracking-[0.25em] uppercase">Vibe Sessions Studio</span>
     </div>
   );
-}
+};
 
 const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD, settings }) => {
   if (!current || !current.videoId) return null;
@@ -567,13 +567,13 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
           onReady: (e) => e.target.playVideo(),
           onStateChange: (e) => {
              if (e.data === 0 && onEndedRef.current) {
-               onEndedRef.current(); // Song ended
+                onEndedRef.current(); // Song ended
              }
           },
           onError: (e) => {
              console.warn('[YouTube Player] Playback error:', e.data);
              if ([5, 100, 101, 150].includes(e.data) && onPlaybackFailedRef.current) {
-               onPlaybackFailedRef.current(current.videoId);
+                onPlaybackFailedRef.current(current.videoId);
              }
           }
         }
@@ -606,6 +606,10 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
   }, [current.videoId]);
 
   const isHUDVisible = isIntroActive && showHUD;
+  
+  const brightVal = settings?.brightness !== undefined ? settings.brightness : 100;
+  const contrastVal = settings?.contrast !== undefined ? settings.contrast : 100;
+  const opacityVal = settings?.overlayOpacity !== undefined ? settings.overlayOpacity : 40;
 
   return (
     <motion.div 
@@ -613,9 +617,18 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
       className="relative w-full h-full flex flex-col items-center justify-center p-6"
     >
       {/* YouTube Player Layer */}
-      <div className="absolute inset-0 z-7 bg-black overflow-hidden">
+      <div 
+        className="absolute inset-0 z-7 bg-black overflow-hidden"
+        style={{
+          filter: `brightness(${brightVal}%) contrast(${contrastVal}%)`
+        }}
+      >
          <div id="yt-player-stage" className="w-full h-full pointer-events-none scale-[1.05]" />
-         <div className="absolute inset-0 bg-black/40 bg-gradient-to-t from-black via-transparent to-black" />
+         <div 
+           className="absolute inset-0 bg-black pointer-events-none" 
+           style={{ opacity: opacityVal / 100 }}
+         />
+         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black pointer-events-none" />
       </div>
 
       {/* Top-Right Minimized Neon Capsule Badge */}
@@ -695,16 +708,22 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
       <NPBar current={current} queue={queue} />
     </motion.div>
   );
-};;
+};
 
-const PromoPlayingScreen = ({ video, onEnded, settings }) => {
+
+const PromoPlayingScreen = ({ video, onEnded, onPlaybackFailed, settings }) => {
   if (!video || !video.videoId) return null;
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
+  const onPlaybackFailedRef = useRef(onPlaybackFailed);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
   }, [onEnded]);
+
+  useEffect(() => {
+    onPlaybackFailedRef.current = onPlaybackFailed;
+  }, [onPlaybackFailed]);
 
   useEffect(() => {
     if (!video || !video.videoId) return;
@@ -732,12 +751,16 @@ const PromoPlayingScreen = ({ video, onEnded, settings }) => {
           onReady: (e) => e.target.playVideo(),
           onStateChange: (e) => {
              if (e.data === 0 && onEndedRef.current) {
-               onEndedRef.current();
+                onEndedRef.current();
              }
           },
           onError: (e) => {
-             console.warn('[YouTube Promo Player] Cover error:', e.data);
-             if (onEndedRef.current) {
+             console.warn(`[YouTube Idle Player] Playback error for ${video.videoId} — error code: ${e.data}`);
+             // Error codes 101/150 = embedding disabled by video owner
+             if ([5, 100, 101, 150].includes(e.data) && onPlaybackFailedRef.current) {
+               onPlaybackFailedRef.current(video.videoId);
+             } else if (onEndedRef.current) {
+               // Other errors: skip to next
                onEndedRef.current();
              }
           }
@@ -770,31 +793,204 @@ const PromoPlayingScreen = ({ video, onEnded, settings }) => {
     };
   }, [video.videoId]);
 
+  const brightVal = settings?.brightness !== undefined ? settings.brightness : 115;
+  const contrastVal = settings?.contrast !== undefined ? settings.contrast : 100;
+  const opacityVal = settings?.overlayOpacity !== undefined ? settings.overlayOpacity : 20;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="relative w-full h-full flex flex-col items-center justify-center p-6 bg-black"
     >
       {/* YouTube Player Layer */}
-      <div className="absolute inset-0 z-7 bg-black overflow-hidden">
+      <div 
+        className="absolute inset-0 z-7 bg-black overflow-hidden"
+        style={{
+          filter: `brightness(${brightVal}%) contrast(${contrastVal}%)`
+        }}
+      >
          <div id="yt-player-promo" className="w-full h-full pointer-events-none scale-[1.05]" />
-         <div className="absolute inset-0 bg-black/30" />
+         <div 
+           className="absolute inset-0 bg-black pointer-events-none" 
+           style={{ opacity: opacityVal / 100 }}
+         />
       </div>
 
-      {/* Floating Info Overlay (Broadcast styling) */}
-      <div className="fixed bottom-12 left-12 z-20 bg-black/60 border border-white/10 backdrop-blur-md px-6 py-4 rounded-2xl flex flex-col pointer-events-none animate-[fadeInUp_0.8s_ease]">
-        <span className="font-syne text-[8px] text-[#db2777] uppercase tracking-[0.3em] font-bold">Vibe Session Studio Cover Series</span>
-        <span className="font-syne font-semibold text-white text-sm mt-1">{video.title}</span>
-        <span className="font-dm text-[10px] text-[#7c6f9a] mt-0.5">{video.artist}</span>
-      </div>
+      {/* Branded Interlude Overlay — bottom-left */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.8, duration: 0.6 }}
+        className="fixed bottom-12 left-12 z-20 flex items-center gap-4 bg-black/60 border border-white/10 backdrop-blur-xl px-5 py-3.5 rounded-2xl pointer-events-none"
+      >
+        {/* Animated waveform bars */}
+        <div className="flex gap-[3px] h-5 items-end">
+          {[0.6, 1, 0.7, 0.9, 0.5, 0.8, 1, 0.65].map((h, i) => (
+            <motion.div
+              key={i}
+              className="w-[2.5px] rounded-full bg-gradient-to-t from-[#8B5CF6] to-[#EC4899]"
+              animate={{ height: [`${h * 10}px`, `${Math.min(1, h + 0.3) * 20}px`, `${h * 10}px`] }}
+              transition={{ duration: 0.8 + i * 0.12, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          ))}
+        </div>
+        <div className="space-y-0.5">
+          <span className="font-syne text-[8px] font-bold uppercase tracking-[0.3em] text-[#D946EF]">Music Interlude</span>
+          <p className="font-syne font-semibold text-white text-[12px] leading-tight truncate max-w-[220px]">{video.title}</p>
+          <p className="font-dm text-[9px] text-white/45">{video.channel || 'Trending'}</p>
+        </div>
+      </motion.div>
 
       {/* Top logo */}
       <div className="fixed top-12 right-12 z-20 opacity-30 font-syne text-[11px] tracking-[0.4em] uppercase text-white pointer-events-none">
-        Vibe Session Studio
+        {settings?.businessName || 'Vibe Sessions Studio'}
       </div>
     </motion.div>
   );
 };
+
+
+// ──────────────────────────────────────────────
+// Promo Stinger Card Component — Cinematic Broadcast Style
+// ──────────────────────────────────────────────
+const PromoStingerCard = ({ promos = [], activeIndex = 0 }) => {
+  if (promos.length === 0) return null;
+  const promo = promos[activeIndex % promos.length];
+  
+  const themeColors = {
+    beer:      { border: 'border-amber-500/50',  glow: 'shadow-amber-500/30',  text: 'text-amber-400',  bg: 'from-amber-950/60 to-amber-900/20',  pulse: 'rgba(245,158,11,0.35)',  icon: '🍺' },
+    dish:      { border: 'border-red-500/50',    glow: 'shadow-red-500/30',    text: 'text-red-400',    bg: 'from-red-950/60 to-red-900/20',      pulse: 'rgba(239,68,68,0)',      icon: '🍽️' },
+    happyhour: { border: 'border-pink-500/50',   glow: 'shadow-pink-500/30',   text: 'text-pink-400',   bg: 'from-pink-950/60 to-pink-900/20',    pulse: 'rgba(236,72,153,0.35)',  icon: '⏰' },
+    custom:    { border: 'border-purple-500/50', glow: 'shadow-purple-500/30', text: 'text-purple-400', bg: 'from-purple-950/60 to-purple-900/20', pulse: 'rgba(139,92,246,0)',     icon: '✨' }
+  };
+  
+  const theme = themeColors[promo.type] || themeColors.custom;
+  const isTimeboxed = promo.type === 'beer' || promo.type === 'happyhour';
+  
+  // Compute countdown display from schedule.endHour
+  const getTimeLabel = () => {
+    if (!promo.schedule || promo.schedule.endHour === undefined) return null;
+    const endH = promo.schedule.endHour;
+    const suffix = endH >= 12 ? 'PM' : 'AM';
+    const displayH = endH > 12 ? endH - 12 : endH === 0 ? 12 : endH;
+    return `Ends at ${displayH}:00 ${suffix}`;
+  };
+  const timeLabel = getTimeLabel();
+  
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={promo.id}
+        // Cinematic broadcast drop-in: fall from above with slight rotation
+        initial={{ opacity: 0, y: -120, rotate: -4, scale: 0.88 }}
+        animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+        exit={{ opacity: 0, x: 220, rotate: 6, scale: 0.88 }}
+        transition={{ type: 'spring', stiffness: 160, damping: 18, mass: 0.9 }}
+        className={`fixed right-10 top-[18%] z-50 w-72 rounded-2xl flex flex-col gap-0 border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-2xl ${theme.glow} overflow-hidden backdrop-blur-xl`}
+        style={isTimeboxed ? {
+          boxShadow: `0 0 40px ${theme.pulse}, 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)`
+        } : {
+          boxShadow: `0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)`
+        }}
+      >
+        {/* Top shimmer bar */}
+        <div className="absolute top-0 left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+        
+        {/* Pulsing halo ring for time-sensitive promos */}
+        {isTimeboxed && (
+          <motion.div
+            className="absolute -inset-1 rounded-2xl pointer-events-none"
+            animate={{ opacity: [0.4, 0.9, 0.4] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ border: `2px solid ${theme.pulse}`, borderRadius: '1rem', filter: `blur(3px)` }}
+          />
+        )}
+
+        {/* Image section */}
+        {promo.imageUrl && (
+          <div className="relative w-full h-40 overflow-hidden">
+            <img 
+              src={promo.imageUrl} 
+              alt={promo.title} 
+              className="w-full h-full object-cover scale-105"
+            />
+            {/* Gradient fade to card body */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+            
+            {/* Badge */}
+            {promo.badgeText && (
+              <motion.span 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+                className="absolute top-3 left-3 text-[9px] font-syne font-extrabold uppercase px-3 py-1.5 rounded-full text-white shadow-lg flex items-center gap-1.5"
+                style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
+              >
+                {theme.icon} {promo.badgeText}
+              </motion.span>
+            )}
+
+            {/* Time-sensitive label in image corner */}
+            {timeLabel && (
+              <span className={`absolute bottom-3 right-3 text-[8px] font-syne font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-black/70 border border-white/10 ${theme.text} backdrop-blur-sm flex items-center gap-1`}>
+                ⏱ {timeLabel}
+              </span>
+            )}
+          </div>
+        )}
+        
+        {/* Card body */}
+        <div className="p-4 space-y-3">
+          <div className="space-y-0.5">
+            <span className={`text-[9px] font-syne uppercase tracking-wider ${theme.text} font-bold`}>{promo.subtitle || 'SPECIAL OFFER'}</span>
+            <h3 className="font-syne font-extrabold text-white text-[15px] leading-tight">{promo.title}</h3>
+          </div>
+          
+          {/* Price row with shimmer effect */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-baseline gap-2">
+              <span 
+                className="font-syne font-black text-2xl text-white relative overflow-hidden"
+                style={{ textShadow: '0 0 20px rgba(255,255,255,0.3)' }}
+              >
+                {/* Price shimmer sweep */}
+                <motion.span
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none"
+                  animate={{ x: ['-100%', '200%'] }}
+                  transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 1.5, ease: 'easeInOut' }}
+                  style={{ width: '60%' }}
+                />
+                {promo.price}
+              </span>
+              {promo.originalPrice && (
+                <span className="font-dm text-xs text-white/35 line-through">{promo.originalPrice}</span>
+              )}
+            </div>
+            <span className="text-[9px] font-syne tracking-widest text-white/40 uppercase border border-white/10 px-2 py-1 rounded-lg">ORDER NOW</span>
+          </div>
+        </div>
+        
+        {/* Pagination dots — only show if multiple promos */}
+        {promos.length > 1 && (
+          <div className="flex justify-center gap-1.5 pb-3">
+            {promos.map((_, i) => (
+              <motion.div
+                key={i}
+                animate={{ 
+                  width: i === (activeIndex % promos.length) ? 16 : 5,
+                  opacity: i === (activeIndex % promos.length) ? 1 : 0.3
+                }}
+                transition={{ duration: 0.3 }}
+                className="h-[3px] rounded-full bg-white"
+              />
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 
 // --- MAIN COMPONENT ---
 
@@ -810,7 +1006,12 @@ export default function StagePage() {
   const [showHUD, setShowHUD] = useState(true);
   const [settings, setSettings] = useState(null);
 
-  const [promoIndex, setPromoIndex] = useState(0);
+  // Dynamic Content States (Improvement #2 & #3)
+  const [promos, setPromos] = useState([]);
+  const [activePromoIndex, setActivePromoIndex] = useState(0);
+  const [idlePlaylist, setIdlePlaylist] = useState([]);
+  const [idleIndex, setIdleIndex] = useState(0);
+
   const inactivityTimerRef = useRef(null);
   const lastPrepIdRef = useRef(null);
 
@@ -825,7 +1026,6 @@ export default function StagePage() {
   }, [realCurrent?.id]);
 
   // Sync Logic (Socket.io)
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
@@ -865,6 +1065,26 @@ export default function StagePage() {
       .then(res => res.json())
       .then(data => setSettings(data))
       .catch(err => console.warn('[Stage Settings Init] error:', err));
+
+    // Promos Fetch (Improvement #2)
+    fetch(`/api/promos?room=${roomID}`)
+      .then(res => res.json())
+      .then(data => setPromos(data))
+      .catch(err => console.warn('[Stage Promos Init] error:', err));
+
+    // Idle Playlist Fetch (Improvement #3 — no cover fallback)
+    fetch(`/api/idle-playlist?room=${roomID}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          setIdlePlaylist(data);
+        }
+        // If empty, idlePlaylist stays [] — Stage shows admin prompt
+      })
+      .catch(err => {
+        console.warn('[Stage Idle Playlist Init] error:', err);
+        // No fallback to studio covers
+      });
 
     const onQueueUpdated = ({ queue: newQueue, currentSong: cs, currentPrep: cp }) => {
       setRealQueue(newQueue || []);
@@ -945,11 +1165,26 @@ export default function StagePage() {
       setSettings(newSettings);
     };
 
+    const onPromosUpdated = (newPromos) => {
+      console.log('[Stage] Promos updated:', newPromos);
+      setPromos(newPromos);
+    };
+
+    const onIdlePlaylistUpdated = (newPlaylist) => {
+      console.log('[Stage] Idle playlist updated:', newPlaylist);
+      if (newPlaylist && newPlaylist.length > 0) {
+        setIdlePlaylist(newPlaylist);
+        setIdleIndex(0);
+      }
+    };
+
     socket.on('queue:updated', onQueueUpdated);
     socket.on('song:prep', onSongPrep);
     socket.on('state:sync', onStateSync);
     socket.on('song:play', onSongPlay);
     socket.on('settings:updated', onSettingsUpdated);
+    socket.on('promos:updated', onPromosUpdated);
+    socket.on('idle-playlist:updated', onIdlePlaylistUpdated);
 
     // Fallback polling interval: if socket is disconnected, poll state every 1.5 seconds
     const pollInterval = setInterval(() => {
@@ -968,11 +1203,13 @@ export default function StagePage() {
       socket.off('state:sync', onStateSync);
       socket.off('song:play', onSongPlay);
       socket.off('settings:updated', onSettingsUpdated);
+      socket.off('promos:updated', onPromosUpdated);
+      socket.off('idle-playlist:updated', onIdlePlaylistUpdated);
       clearInterval(pollInterval);
     };
   }, [isDemoMode]);
 
-  // Calculated values for active display (seamlessly mapping real vs. demo mock queue)
+  // Calculated values for active display
   const current = useMemo(() => {
     if (isDemoMode) {
       const dSong = DEMO_QUEUE[demoIndex];
@@ -995,16 +1232,43 @@ export default function StagePage() {
     return realQueue;
   }, [isDemoMode, realQueue, demoIndex]);
 
-  // Promo Video Autoplay Inactivity Timer: after 30 seconds of total idle silence, start Cover videos
+  // Active Promo Filter (scheduled / enabled check)
+  const activePromos = useMemo(() => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    return promos.filter(p => {
+      if (!p.enabled) return false;
+      if (p.schedule) {
+        const { startHour, endHour } = p.schedule;
+        if (startHour !== undefined && endHour !== undefined) {
+          if (startHour > endHour) {
+            return currentHour >= startHour || currentHour < endHour;
+          }
+          return currentHour >= startHour && currentHour < endHour;
+        }
+      }
+      return true;
+    });
+  }, [promos]);
 
+  // Promo card rotation timer (Improvement #2)
+  useEffect(() => {
+    if (activePromos.length <= 1) return;
+    const interval = setInterval(() => {
+      setActivePromoIndex(prev => (prev + 1) % activePromos.length);
+    }, 15000); // Rotate every 15s
+    return () => clearInterval(interval);
+  }, [activePromos]);
+
+  // Cover Video Autoplay Inactivity Timer: after 30 seconds of total idle silence, start Idle Playlist
   useEffect(() => {
     const isIdle = hasStarted && realQueue.length === 0 && !realCurrent && !realPrep && stage === ST.IDLE;
 
     if (isIdle) {
-      console.log("[Stage] Stage is idle. Starting 30-second promo autoplay countdown...");
+      console.log("[Stage] Stage is idle. Starting 30-second cover autoplay countdown...");
       inactivityTimerRef.current = setTimeout(() => {
-        console.log("[Stage] 30 seconds inactivity reached. Activating Promo/Cover mode!");
-        setPromoIndex(0);
+        console.log("[Stage] 30 seconds inactivity reached. Activating cover playlist mode!");
+        setIdleIndex(0);
         setStage(ST.PROMO_PLAYING);
       }, 30000); // 30 seconds
     } else {
@@ -1093,26 +1357,51 @@ export default function StagePage() {
     });
 
     const songTitle = current.title;
-    const songArtist = current.artist;
+    const songArtist = current.artist || current.singerName;
     const searchQuery = `${songTitle} ${songArtist}`;
 
     try {
-      console.log(`[Stage] Searching alternatives for query: "${searchQuery}"`);
-      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      console.log(`[Stage] Searching alternatives with checked oEmbed embeddability: "${searchQuery}"`);
+      // Improvement #5: Call find-embeddable endpoint for verified video stream URL/ID
+      const res = await fetch(`/api/find-embeddable?q=${encodeURIComponent(searchQuery)}&originalVideoId=${brokenVideoId}`);
       const data = await res.json();
       
-      if (data && Array.isArray(data.items)) {
+      if (data && data.success && data.video) {
+        const alternativeVideoId = data.video.videoId;
+        console.log(`[Stage] Found oEmbed embeddable alternative: "${data.video.title}" with ID: ${alternativeVideoId}`);
+        
+        const params = new URLSearchParams(window.location.search);
+        const roomID = params.get('room') || 'default';
+        
+        const updateRes = await fetch(`/api/queue/update-current-video?room=${roomID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId: alternativeVideoId })
+        });
+        
+        const updateData = await updateRes.json();
+        if (updateData.success) {
+          console.log(`[Stage] Successfully updated server currentSong to alternative: ${alternativeVideoId}`);
+          return;
+        }
+      }
+      
+      // Fallback search proxy (with client-side verification if find-embeddable failed)
+      const fallbackRes = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      const fallbackData = await fallbackRes.json();
+      
+      if (fallbackData && Array.isArray(fallbackData.items)) {
         const currentFailed = new Set(failedVideoIds);
         currentFailed.add(brokenVideoId);
 
-        const alternative = data.items.find(item => {
+        const alternative = fallbackData.items.find(item => {
           const vId = item.videoId;
           return vId && vId !== brokenVideoId && !currentFailed.has(vId);
         });
 
         if (alternative) {
           const alternativeVideoId = alternative.videoId;
-          console.log(`[Stage] Found working alternative video: "${alternative.title}" with ID: ${alternativeVideoId}`);
+          console.log(`[Stage Fallback] Found working video alternative: "${alternative.title}" with ID: ${alternativeVideoId}`);
           
           const params = new URLSearchParams(window.location.search);
           const roomID = params.get('room') || 'default';
@@ -1125,8 +1414,8 @@ export default function StagePage() {
           
           const updateData = await updateRes.json();
           if (updateData.success) {
-            console.log(`[Stage] Successfully updated server currentSong to alternative: ${alternativeVideoId}`);
-            return; // Server will broadcast state sync which triggers player re-mount
+            console.log(`[Stage] Successfully updated server currentSong to fallback alternative: ${alternativeVideoId}`);
+            return;
           }
         }
       }
@@ -1139,10 +1428,29 @@ export default function StagePage() {
     }
   }, [current, failedVideoIds, nextSong]);
 
+  const updateLocalBrightness = async (newVal) => {
+    if (!settings) return;
+    const updated = { ...settings, brightness: newVal };
+    setSettings(updated);
+    
+    // Save to server to persist and sync Kiosk view in real time
+    const params = new URLSearchParams(window.location.search);
+    const roomID = params.get('room') || 'default';
+    try {
+      await fetch(`/api/settings?room=${roomID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (err) {
+      console.warn('[Stage] Failed to save quick brightness adjustments:', err);
+    }
+  };
+
   if (!hasStarted) {
     return (
       <div className="fixed inset-0 bg-[#04020a] flex items-center justify-center text-white">
-         <Atmo vignette={settings?.vignette} />
+         <Atmo vignette={settings?.vignette} brightness={settings?.brightness} />
          <Particles />
          <div className="relative z-10 text-center space-y-10 animate-[fadeInUp_1s_ease]">
             <div className="space-y-4">
@@ -1169,9 +1477,11 @@ export default function StagePage() {
     );
   }
 
+  const currentCoverVideo = idlePlaylist[idleIndex % (idlePlaylist.length || 1)] || null;
+
   return (
     <div className="fixed inset-0 bg-[#04020a] overflow-hidden select-none text-white">
-      <Atmo vignette={settings?.vignette} />
+      <Atmo vignette={settings?.vignette} brightness={settings?.brightness} />
       <Particles />
 
       {/* Logo Bug */}
@@ -1179,6 +1489,11 @@ export default function StagePage() {
         <div className="w-1.5 h-1.5 bg-[#db2777] rounded-full animate-pulse" />
         {settings?.businessName || 'Vibe Sessions Studio'}
       </div>
+
+      {/* Dynamic Stinger Card overlay for dishes/drinks promotions */}
+      {(stage === ST.PLAYING || stage === ST.IDLE || stage === ST.PROMO_PLAYING) && activePromos.length > 0 && (
+        <PromoStingerCard promos={activePromos} activeIndex={activePromoIndex} />
+      )}
 
       <div className="relative z-10 w-full h-full flex items-center justify-center">
         <AnimatePresence mode="wait">
@@ -1215,22 +1530,46 @@ export default function StagePage() {
             />
           )}
 
-          {stage === ST.PROMO_PLAYING && (
+          {stage === ST.PROMO_PLAYING && currentCoverVideo && (
             <PromoPlayingScreen 
-              key={`promo-${VIBE_STUDIO_COVERS[promoIndex]?.videoId || ''}`} 
-              video={VIBE_STUDIO_COVERS[promoIndex]} 
+              key={`promo-${currentCoverVideo.videoId || ''}`} 
+              video={currentCoverVideo} 
               onEnded={() => {
-                setPromoIndex(prev => {
-                  if (VIBE_STUDIO_COVERS.length <= 1) return 0;
+                setIdleIndex(prev => {
+                  if (idlePlaylist.length <= 1) return 0;
                   let next;
                   do {
-                    next = Math.floor(Math.random() * VIBE_STUDIO_COVERS.length);
+                    next = Math.floor(Math.random() * idlePlaylist.length);
+                  } while (next === prev);
+                  return next;
+                });
+              }}
+              onPlaybackFailed={(failedId) => {
+                console.warn(`[Stage] Idle video ${failedId} failed embedding check. Skipping to next...`);
+                setIdleIndex(prev => {
+                  if (idlePlaylist.length <= 1) return 0;
+                  let next;
+                  do {
+                    next = Math.floor(Math.random() * idlePlaylist.length);
                   } while (next === prev);
                   return next;
                 });
               }}
               settings={settings}
             />
+          )}
+          {stage === ST.PROMO_PLAYING && !currentCoverVideo && (
+            // No idle videos loaded — show a helpful admin prompt
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center gap-6 text-center p-10"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-[#8B5CF6]/20 border border-[#8B5CF6]/30 flex items-center justify-center text-3xl">🎬</div>
+              <div className="space-y-2">
+                <h2 className="LuxeFont text-white text-3xl">Idle Playlist Empty</h2>
+                <p className="font-dm text-white/40 text-sm max-w-sm">Open the Admin Console → Idle Playlist tab and add YouTube video URLs to play during intermissions.</p>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -1246,8 +1585,23 @@ export default function StagePage() {
         )}
       </div>
 
-      {/* Manual Controls Overlay */}
+      {/* Manual Controls Overlay with dynamic brightness controls (Improvement #1) */}
       <div className="fixed bottom-6 right-6 p-2 opacity-0 hover:opacity-100 transition-opacity z-[1000] flex gap-3 backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10">
+         <div className="flex items-center gap-2 px-3 bg-white/10 rounded-xl">
+           <Sun size={16} className="text-white/60 animate-spin-slow" />
+           <input 
+             type="range" 
+             min="50" 
+             max="175" 
+             value={settings?.brightness || 100} 
+             onChange={(e) => updateLocalBrightness(parseInt(e.target.value))}
+             className="w-20 h-1 accent-[#db2777] bg-white/20 rounded-lg appearance-none cursor-pointer"
+             title="Quick Stage Brightness"
+           />
+           <span className="text-[10px] font-syne font-bold w-8 text-right text-[#c8b9e6]/80">
+             {settings?.brightness || 115}%
+           </span>
+         </div>
          <button onClick={() => setShowHUD(!showHUD)} title="Toggle HUD" className="bg-white/10 p-3 rounded-xl text-white hover:bg-white/20 transition-colors"><Layout size={18} /></button>
          <button onClick={nextSong} title="Skip Song" className="bg-white/10 p-3 rounded-xl text-white hover:bg-white/20 transition-colors"><Tv size={18} /></button>
          <button onClick={() => setStage(ST.IDLE)} title="Force Idle" className="bg-white/10 p-3 rounded-xl text-white hover:bg-white/20 transition-colors"><Settings size={18} /></button>

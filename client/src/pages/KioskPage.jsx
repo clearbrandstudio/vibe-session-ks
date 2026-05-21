@@ -329,6 +329,10 @@ export default function KioskPage() {
   const [promoText, setPromoText] = useState("");
   const [prepDuration, setPrepDuration] = useState(15);
   const [vignette, setVignette] = useState(35);
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [overlayOpacity, setOverlayOpacity] = useState(40);
+  const [ambientMode, setAmbientMode] = useState('balanced');
   const [toast, setToast] = useState({ show: false, msg: "" });
   const [shakeInput, setShakeInput] = useState(false);
 
@@ -338,6 +342,10 @@ export default function KioskPage() {
   const [tempPromoText, setTempPromoText] = useState("");
   const [tempPrepDuration, setTempPrepDuration] = useState(15);
   const [tempVignette, setTempVignette] = useState(35);
+  const [tempBrightness, setTempBrightness] = useState(100);
+  const [tempContrast, setTempContrast] = useState(100);
+  const [tempOverlayOpacity, setTempOverlayOpacity] = useState(40);
+  const [tempAmbientMode, setTempAmbientMode] = useState('balanced');
 
   const [showCancelCurrentModal, setShowCancelCurrentModal] = useState(false);
   const [showQueueDrawer, setShowQueueDrawer] = useState(false); // mobile queue drawer
@@ -373,6 +381,10 @@ export default function KioskPage() {
           if (data.prepDuration) setPrepDuration(data.prepDuration);
           if (data.youtubeApiKey) setCustomApiKey(data.youtubeApiKey);
           if (data.vignette !== undefined) setVignette(data.vignette);
+          if (data.brightness !== undefined) setBrightness(data.brightness);
+          if (data.contrast !== undefined) setContrast(data.contrast);
+          if (data.overlayOpacity !== undefined) setOverlayOpacity(data.overlayOpacity);
+          if (data.ambientMode !== undefined) setAmbientMode(data.ambientMode);
         }).catch(err => console.warn('[Settings fallback] failed to fetch:', err));
 
       fetch(`/api/state?room=${roomID}`)
@@ -393,6 +405,10 @@ export default function KioskPage() {
       if (newSettings.prepDuration) setPrepDuration(newSettings.prepDuration);
       if (newSettings.youtubeApiKey) setCustomApiKey(newSettings.youtubeApiKey);
       if (newSettings.vignette !== undefined) setVignette(newSettings.vignette);
+      if (newSettings.brightness !== undefined) setBrightness(newSettings.brightness);
+      if (newSettings.contrast !== undefined) setContrast(newSettings.contrast);
+      if (newSettings.overlayOpacity !== undefined) setOverlayOpacity(newSettings.overlayOpacity);
+      if (newSettings.ambientMode !== undefined) setAmbientMode(newSettings.ambientMode);
     };
     socket.on("settings:updated", onSettingsUpdated);
 
@@ -591,7 +607,7 @@ export default function KioskPage() {
     }
   };
 
-  const saveSettings = async (key, bName, pText, duration, vignetteVal) => {
+  const saveSettings = async (key, bName, pText, duration, vignetteVal, brightnessVal, contrastVal, overlayOpacityVal, ambientModeVal) => {
     const params = new URLSearchParams(window.location.search);
     const roomID = params.get('room') || 'default';
 
@@ -604,7 +620,11 @@ export default function KioskPage() {
           businessName: bName,
           promoText: pText,
           prepDuration: parseInt(duration) || 15,
-          vignette: vignetteVal !== undefined ? parseInt(vignetteVal) : 35
+          vignette: vignetteVal !== undefined ? parseInt(vignetteVal) : 35,
+          brightness: brightnessVal !== undefined ? parseInt(brightnessVal) : 100,
+          contrast: contrastVal !== undefined ? parseInt(contrastVal) : 100,
+          overlayOpacity: overlayOpacityVal !== undefined ? parseInt(overlayOpacityVal) : 40,
+          ambientMode: ambientModeVal || 'balanced'
         })
       });
       const data = await res.json();
@@ -615,6 +635,18 @@ export default function KioskPage() {
         setPrepDuration(parseInt(duration) || 15);
         if (data.settings?.vignette !== undefined) {
           setVignette(data.settings.vignette);
+        }
+        if (data.settings?.brightness !== undefined) {
+          setBrightness(data.settings.brightness);
+        }
+        if (data.settings?.contrast !== undefined) {
+          setContrast(data.settings.contrast);
+        }
+        if (data.settings?.overlayOpacity !== undefined) {
+          setOverlayOpacity(data.settings.overlayOpacity);
+        }
+        if (data.settings?.ambientMode !== undefined) {
+          setAmbientMode(data.settings.ambientMode);
         }
         setShowSettings(false);
         showToast("Settings saved to server!");
@@ -702,6 +734,10 @@ export default function KioskPage() {
             setTempPromoText(promoText);
             setTempPrepDuration(prepDuration);
             setTempVignette(vignette);
+            setTempBrightness(brightness);
+            setTempContrast(contrast);
+            setTempOverlayOpacity(overlayOpacity);
+            setTempAmbientMode(ambientMode);
             setShowSettings(true);
           }}
           className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#0c061a]/80 border border-[#8b5cf6]/30 flex items-center justify-center text-[#8b5cf6] hover:text-[#d946ef] hover:border-[#d946ef]/60 transition-all group"
@@ -1050,18 +1086,110 @@ export default function KioskPage() {
                  </div>
 
                   <div>
-                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">
-                      Radial Vignette Darkness ({tempVignette}%)
-                    </label>
+                    <label className="block font-syne text-[9px] uppercase tracking-widest text-[#7c6f9a] mb-2">Ambient Mode Preset</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'dark', label: '🌙 Night', v: 50, b: 75, c: 120, o: 50 },
+                        { id: 'bright', label: '☀️ Day', v: 15, b: 130, c: 95, o: 20 },
+                        { id: 'balanced', label: '🎬 Cine', v: 35, b: 100, c: 100, o: 40 }
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setTempAmbientMode(preset.id);
+                            setTempVignette(preset.v);
+                            setTempBrightness(preset.b);
+                            setTempContrast(preset.c);
+                            setTempOverlayOpacity(preset.o);
+                          }}
+                          className={`py-2 rounded-xl text-[10px] font-syne font-bold uppercase tracking-wider border transition-all ${
+                            tempAmbientMode === preset.id
+                              ? 'bg-gradient-to-r from-[#8b5cf6]/20 to-[#d946ef]/20 border-[#d946ef] text-white'
+                              : 'bg-white/5 border-white/5 text-[#7c6f9a] hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-[9px] font-syne uppercase tracking-widest text-[#7c6f9a] mb-2">
+                      <span>Radial Vignette Darkness</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{tempVignette}%</span>
+                    </div>
                     <div className="flex items-center gap-4">
                       <span className="text-[10px] text-[#7c6f9a]">Bright</span>
                       <input 
-                         type="range"
-                         min="0"
-                         max="100"
-                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-2 rounded-lg cursor-pointer"
+                         type="range" min="0" max="100"
+                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-1.5 rounded-lg cursor-pointer"
                          value={tempVignette}
-                         onChange={(e) => setTempVignette(parseInt(e.target.value))}
+                         onChange={(e) => {
+                           setTempVignette(parseInt(e.target.value));
+                           setTempAmbientMode('custom');
+                         }}
+                      />
+                      <span className="text-[10px] text-[#7c6f9a]">Dark</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-[9px] font-syne uppercase tracking-widest text-[#7c6f9a] mb-2">
+                      <span>Stage Screen Brightness</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{tempBrightness}%</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] text-[#7c6f9a]">Dim</span>
+                      <input 
+                         type="range" min="30" max="180" step="5"
+                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-1.5 rounded-lg cursor-pointer"
+                         value={tempBrightness}
+                         onChange={(e) => {
+                           setTempBrightness(parseInt(e.target.value));
+                           setTempAmbientMode('custom');
+                         }}
+                      />
+                      <span className="text-[10px] text-[#7c6f9a]">Bright</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-[9px] font-syne uppercase tracking-widest text-[#7c6f9a] mb-2">
+                      <span>Contrast Filter Boost</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{tempContrast}%</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] text-[#7c6f9a]">Low</span>
+                      <input 
+                         type="range" min="50" max="160" step="5"
+                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-1.5 rounded-lg cursor-pointer"
+                         value={tempContrast}
+                         onChange={(e) => {
+                           setTempContrast(parseInt(e.target.value));
+                           setTempAmbientMode('custom');
+                         }}
+                      />
+                      <span className="text-[10px] text-[#7c6f9a]">High</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-[9px] font-syne uppercase tracking-widest text-[#7c6f9a] mb-2">
+                      <span>Player Overlay Opacity</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{tempOverlayOpacity}%</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-[10px] text-[#7c6f9a]">Clear</span>
+                      <input 
+                         type="range" min="0" max="90" step="5"
+                         className="flex-1 accent-[#D946EF] bg-[#0c051a] border border-[#8b5cf6]/30 h-1.5 rounded-lg cursor-pointer"
+                         value={tempOverlayOpacity}
+                         onChange={(e) => {
+                           setTempOverlayOpacity(parseInt(e.target.value));
+                           setTempAmbientMode('custom');
+                         }}
                       />
                       <span className="text-[10px] text-[#7c6f9a]">Dark</span>
                     </div>
@@ -1080,7 +1208,7 @@ export default function KioskPage() {
                  </div>
 
                  <button 
-                   onClick={() => saveSettings(tempApiKey, tempBusinessName, tempPromoText, tempPrepDuration, tempVignette)}
+                   onClick={() => saveSettings(tempApiKey, tempBusinessName, tempPromoText, tempPrepDuration, tempVignette, tempBrightness, tempContrast, tempOverlayOpacity, tempAmbientMode)}
                    className="w-full py-4 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white font-syne text-[10px] font-bold uppercase tracking-widest shadow-xl transition-all hover:scale-[1.02] active:scale-95"
                  >
                    Save & Sync Configuration

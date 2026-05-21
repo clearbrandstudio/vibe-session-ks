@@ -1,0 +1,45 @@
+{
+  "rooms": {
+    "default": [
+      {
+        "id": "promo-beer-bucket",
+        "type": "beer",
+        "title": "Bucket of Corona",
+        "subtitle": "5 Ice-Cold Bottles",
+        "price": "$22.00",
+        "originalPrice": "$30.00",
+        "imageUrl": "https://images.unsplash.com/photo-1600788886242-5c96aabe3757?w=500&auto=format&fit=crop&q=60",
+        "badgeText": "HAPPY HOUR",
+        "badgeColor": "#eab308",
+        "schedule": { "startHour": 17, "endHour": 23 },
+        "enabled": true
+      },
+      {
+        "id": "promo-wings",
+        "type": "dish",
+        "title": "Buffalo Wings",
+        "subtitle": "Spicy Honey Glaze",
+        "price": "$12.00",
+        "originalPrice": "$16.00",
+        "imageUrl": "https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=500&auto=format&fit=crop&q=60",
+        "badgeText": "BEST SELLER",
+        "badgeColor": "#ef4444",
+        "schedule": { "startHour": 0, "endHour": 24 },
+        "enabled": true
+      },
+      {
+        "id": "promo-happy-hour-cocktail",
+        "type": "happyhour",
+        "title": "Tropical Mojito",
+        "subtitle": "Fresh Lime & Mint",
+        "price": "$7.50",
+        "originalPrice": "$12.00",
+        "imageUrl": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500&auto=format&fit=crop&q=60",
+        "badgeText": "2-FOR-1 DEALS",
+        "badgeColor": "#ec4899",
+        "schedule": { "startHour": 15, "endHour": 20 },
+        "enabled": true
+      }
+    ]
+  }
+}
