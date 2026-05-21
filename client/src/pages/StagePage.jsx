@@ -554,42 +554,78 @@ const PROMO_THEMES = {
 
 const PromoCollageOverlay = ({ promos = [], active }) => {
   const activePromos = promos.filter(p => p.enabled).slice(0, 4);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (!active || activePromos.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentIndex(prev => (prev + 1) % activePromos.length);
+    }, 3500); // rotate every 3.5 seconds
+    return () => clearInterval(timer);
+  }, [active, activePromos.length]);
+
   if (!active || activePromos.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#04020a]/80 backdrop-blur-md transition-all duration-1000">
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        exit="hidden"
-        variants={{
-          visible: { transition: { staggerChildren: 0.15 } }
-        }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 w-full max-w-5xl"
-      >
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#04020a]/80 backdrop-blur-2xl transition-all duration-1000 overflow-hidden">
+      {/* 3D Glassmorphism Glowing Orb in the background */}
+      <motion.div 
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1, rotate: 360 }}
+        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+        className="absolute w-[700px] h-[700px] rounded-full blur-[120px] bg-gradient-to-tr from-[#db2777]/30 via-[#9333ea]/30 to-[#06b6d4]/30 pointer-events-none"
+      />
+
+      <div className="relative w-full max-w-5xl h-[600px] flex items-center justify-center" style={{ perspective: '1600px' }}>
         {activePromos.map((promo, i) => {
           const theme = PROMO_THEMES[promo?.type] || PROMO_THEMES.custom;
-          const isOddCount = activePromos.length % 2 !== 0;
-          const spanClass = (isOddCount && i === 0) ? 'md:col-span-2 md:w-2/3 md:mx-auto' : 'col-span-1';
           
+          // Calculate relative position for the circular orbit (-1, 0, 1)
+          const total = activePromos.length;
+          let offset = i - currentIndex;
+          if (offset < -Math.floor(total / 2)) offset += total;
+          if (offset > Math.floor(total / 2)) offset -= total;
+          
+          const isCenter = offset === 0;
+          
+          // 3D Math for Orb rotation
+          const z = isCenter ? 0 : -350;
+          const x = offset * 280;
+          const rotateY = offset * -35;
+          const scale = isCenter ? 1 : 0.75;
+          const opacity = isCenter ? 1 : Math.max(0, 1 - Math.abs(offset) * 0.5);
+
           return (
             <motion.div
-              key={`collage-${promo.id}`}
-              variants={{
-                hidden: { opacity: 0, scale: 0.8, y: 50 },
-                visible: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 20 } }
+              key={`carousel-${promo.id}`}
+              initial={false}
+              animate={{ 
+                x, 
+                z, 
+                rotateY, 
+                scale, 
+                opacity,
+                filter: isCenter ? 'blur(0px)' : 'blur(5px)'
               }}
-              className={`${spanClass} p-5 rounded-3xl border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col gap-3 backdrop-blur-xl relative overflow-hidden`}
+              transition={{ type: 'spring', stiffness: 100, damping: 20, mass: 1 }}
+              style={{ transformStyle: 'preserve-3d' }}
+              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] md:w-[420px] p-6 rounded-[2rem] border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex flex-col gap-4 backdrop-blur-3xl`}
             >
-              {/* Shine effect */}
-              <div className="absolute top-0 left-0 w-[150%] h-[150%] bg-gradient-to-br from-white/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-12 pointer-events-none" />
+              {/* Center Shine effect */}
+              {isCenter && (
+                <motion.div 
+                  className="absolute inset-0 z-20 pointer-events-none bg-gradient-to-tr from-transparent via-white/10 to-transparent"
+                  animate={{ x: ['-200%', '200%'] }}
+                  transition={{ duration: 3, repeat: Infinity, repeatDelay: 0.5 }}
+                />
+              )}
               
               {promo.imageUrl && (
-                <div className="relative w-full h-36 md:h-48 rounded-2xl overflow-hidden shadow-inner bg-black/40">
+                <div className="relative w-full h-48 md:h-56 rounded-2xl overflow-hidden shadow-inner bg-black/50">
                   <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
                   {promo.badgeText && (
                     <span
-                      className="absolute top-3 left-3 text-[11px] font-syne font-extrabold uppercase px-3 py-1 rounded-full text-white shadow-lg tracking-wider"
+                      className="absolute top-4 left-4 text-[12px] font-syne font-extrabold uppercase px-4 py-1.5 rounded-full text-white shadow-2xl tracking-widest"
                       style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
                     >
                       {promo.badgeText}
@@ -597,27 +633,27 @@ const PromoCollageOverlay = ({ promos = [], active }) => {
                   )}
                 </div>
               )}
-              <div className="space-y-1 mt-1 z-10 relative">
-                <span className={`text-[11px] font-syne uppercase tracking-wider font-bold ${theme.text}`}>
+              <div className="space-y-1 mt-2 z-10 relative text-center">
+                <span className={`text-[12px] font-syne uppercase tracking-[0.3em] font-bold ${theme.text}`}>
                   {promo.subtitle || 'SPECIAL OFFER'}
                 </span>
-                <h3 className="font-syne font-bold text-white text-xl md:text-2xl leading-tight line-clamp-2">
+                <h3 className="font-syne font-bold text-white text-2xl md:text-3xl leading-tight line-clamp-2 drop-shadow-md mt-2">
                   {promo.title}
                 </h3>
               </div>
-              <div className="flex items-baseline justify-between mt-2 z-10 relative">
+              <div className="flex items-center justify-between mt-4 z-10 relative bg-black/20 p-4 rounded-2xl border border-white/5">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-syne font-extrabold text-2xl text-white">{promo.price}</span>
+                  <span className="font-syne font-black text-3xl text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">{promo.price}</span>
                   {promo.originalPrice && (
                     <span className="font-dm text-sm text-white/40 line-through">{promo.originalPrice}</span>
                   )}
                 </div>
-                <span className="text-[10px] font-syne tracking-[0.2em] text-white/50 uppercase bg-white/5 border border-white/10 px-4 py-2 rounded-full backdrop-blur-md">Order Now</span>
+                <span className="text-[10px] font-syne tracking-[0.2em] text-white uppercase bg-gradient-to-r from-pink-500 to-purple-600 px-5 py-2.5 rounded-full shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-white/20">Order Now</span>
               </div>
             </motion.div>
           );
         })}
-      </motion.div>
+      </div>
     </div>
   );
 };
@@ -652,7 +688,7 @@ const PromoCardOverlay = ({ promos = [], settings, isOutro = false }) => {
       }, delay);
     };
 
-    scheduleShow(promoGap); // first appearance after initial gap
+    scheduleShow(10000); // first appearance after exactly 10s so it doesn't get missed
 
     return () => {
       setVisible(false); // Force hide on cleanup to prevent stuck promos
@@ -785,8 +821,8 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
         const duration = player.getDuration();
         if (duration > 0) {
           const timeRemaining = duration - current;
-          // Trigger outro collage when 15 seconds remain
-          if (timeRemaining <= 15) {
+          // Trigger outro collage when 10 seconds remain
+          if (timeRemaining <= 10) {
             setIsOutro(true);
           } else {
             setIsOutro(false);
