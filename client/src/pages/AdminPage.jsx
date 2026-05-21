@@ -66,7 +66,7 @@ export default function AdminPage() {
   // Editor States
   const [selectedPromo, setSelectedPromo] = useState(null);
   const [newVideoUrl, setNewVideoUrl] = useState('');
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState(params.get('tab') || 'general');
 
   // UI Status
   const [loading, setLoading] = useState(true);

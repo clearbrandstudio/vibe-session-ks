@@ -789,17 +789,27 @@ export default function KioskPage() {
               </span>
             </div>
             <div className="flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar">
-              {LANGUAGES.map(lang => (
-                <button 
-                  key={lang.id} 
-                  onClick={() => { setActiveLang(lang.id); handleSearch(searchValue || "karaoke hits 2024", lang.id); }}
-                  className={`flex flex-col items-center gap-1 shrink-0 transition-all ${activeLang === lang.id ? 'opacity-100' : 'opacity-35 hover:opacity-60'}`}
-                >
-                  <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full overflow-hidden border-2 p-0.5 ${activeLang === lang.id ? 'border-[#d946ef] shadow-[0_0_10px_rgba(217,70,239,0.4)]' : 'border-transparent'}`}>
-                    <div className="w-full h-full rounded-full overflow-hidden" dangerouslySetInnerHTML={{ __html: lang.id === 'all' ? `<div class="bg-indigo-900/50 w-full h-full flex items-center justify-center text-sm">🌐</div>` : FLAG_SVG[lang.id] }} />
-                  </div>
-                </button>
-              ))}
+              <a 
+                href={`/admin?tab=general&room=${new URLSearchParams(window.location.search).get('room') || 'default'}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 text-[#8B5CF6] hover:bg-[#8B5CF6]/20 hover:border-[#8B5CF6]/40 transition-all font-syne text-[10px] font-bold uppercase tracking-wider shrink-0"
+              >
+                <span className="text-[12px]">⚙️</span>
+                <span className="hidden sm:inline">Settings</span>
+              </a>
+              <a 
+                href={`/admin?tab=promos&room=${new URLSearchParams(window.location.search).get('room') || 'default'}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#D946EF]/10 border border-[#D946EF]/20 text-[#D946EF] hover:bg-[#D946EF]/20 hover:border-[#D946EF]/40 transition-all font-syne text-[10px] font-bold uppercase tracking-wider shrink-0"
+              >
+                <span className="text-[12px]">📢</span>
+                <span className="hidden sm:inline">Promo</span>
+              </a>
+              <a 
+                href={`/admin?tab=idlePlaylist&room=${new URLSearchParams(window.location.search).get('room') || 'default'}`} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EC4899]/10 border border-[#EC4899]/20 text-[#EC4899] hover:bg-[#EC4899]/20 hover:border-[#EC4899]/40 transition-all font-syne text-[10px] font-bold uppercase tracking-wider shrink-0"
+              >
+                <span className="text-[12px]">📺</span>
+                <span className="hidden sm:inline">Playlist</span>
+              </a>
             </div>
           </div>
 
