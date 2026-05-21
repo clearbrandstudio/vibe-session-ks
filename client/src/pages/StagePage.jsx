@@ -552,7 +552,77 @@ const PROMO_THEMES = {
   custom:    { bg: 'from-cyan-900/90 to-indigo-800/80',  border: 'border-cyan-500/40',    text: 'text-cyan-300',    glow: 'shadow-[0_0_30px_rgba(34,211,238,0.25)]' }
 };
 
-const PromoCardOverlay = ({ promos = [], settings }) => {
+const PromoCollageOverlay = ({ promos = [], active }) => {
+  const activePromos = promos.filter(p => p.enabled).slice(0, 4);
+  if (!active || activePromos.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#04020a]/80 backdrop-blur-md transition-all duration-1000">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        exit="hidden"
+        variants={{
+          visible: { transition: { staggerChildren: 0.15 } }
+        }}
+        className="grid grid-cols-1 md:grid-cols-2 gap-6 p-8 w-full max-w-5xl"
+      >
+        {activePromos.map((promo, i) => {
+          const theme = PROMO_THEMES[promo?.type] || PROMO_THEMES.custom;
+          const isOddCount = activePromos.length % 2 !== 0;
+          const spanClass = (isOddCount && i === 0) ? 'md:col-span-2 md:w-2/3 md:mx-auto' : 'col-span-1';
+          
+          return (
+            <motion.div
+              key={`collage-${promo.id}`}
+              variants={{
+                hidden: { opacity: 0, scale: 0.8, y: 50 },
+                visible: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 20 } }
+              }}
+              className={`${spanClass} p-5 rounded-3xl border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col gap-3 backdrop-blur-xl relative overflow-hidden`}
+            >
+              {/* Shine effect */}
+              <div className="absolute top-0 left-0 w-[150%] h-[150%] bg-gradient-to-br from-white/10 to-transparent -translate-x-1/2 -translate-y-1/2 rotate-12 pointer-events-none" />
+              
+              {promo.imageUrl && (
+                <div className="relative w-full h-36 md:h-48 rounded-2xl overflow-hidden shadow-inner bg-black/40">
+                  <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
+                  {promo.badgeText && (
+                    <span
+                      className="absolute top-3 left-3 text-[11px] font-syne font-extrabold uppercase px-3 py-1 rounded-full text-white shadow-lg tracking-wider"
+                      style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
+                    >
+                      {promo.badgeText}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="space-y-1 mt-1 z-10 relative">
+                <span className={`text-[11px] font-syne uppercase tracking-wider font-bold ${theme.text}`}>
+                  {promo.subtitle || 'SPECIAL OFFER'}
+                </span>
+                <h3 className="font-syne font-bold text-white text-xl md:text-2xl leading-tight line-clamp-2">
+                  {promo.title}
+                </h3>
+              </div>
+              <div className="flex items-baseline justify-between mt-2 z-10 relative">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-syne font-extrabold text-2xl text-white">{promo.price}</span>
+                  {promo.originalPrice && (
+                    <span className="font-dm text-sm text-white/40 line-through">{promo.originalPrice}</span>
+                  )}
+                </div>
+                <span className="text-[10px] font-syne tracking-[0.2em] text-white/50 uppercase bg-white/5 border border-white/10 px-4 py-2 rounded-full backdrop-blur-md">Order Now</span>
+              </div>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    </div>
+  );
+};
+
+const PromoCardOverlay = ({ promos = [], settings, isOutro = false }) => {
   const position = settings?.promoPosition || 'bottom-right';
   const animStyle = settings?.promoAnimation || 'slide';
   const promoDuration = (settings?.promoDuration || 20) * 1000;   // ms
@@ -585,6 +655,7 @@ const PromoCardOverlay = ({ promos = [], settings }) => {
     scheduleShow(promoGap); // first appearance after initial gap
 
     return () => {
+      setVisible(false); // Force hide on cleanup to prevent stuck promos
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
     };
@@ -608,21 +679,21 @@ const PromoCardOverlay = ({ promos = [], settings }) => {
   return (
     <div className={posClass} style={{ perspective: '800px' }}>
       <AnimatePresence mode="wait">
-        {visible && isActiveHour && (
+        {visible && isActiveHour && !isOutro && (
           <motion.div
             key={promo.id}
             variants={variants}
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`w-64 p-4 rounded-2xl flex flex-col gap-2.5 border backdrop-blur-xl ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow}`}
+            className={`w-[200px] sm:w-[220px] p-3 rounded-2xl flex flex-col gap-2 border backdrop-blur-xl ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow}`}
           >
             {promo.imageUrl && (
-              <div className="relative w-full h-28 rounded-xl overflow-hidden shadow-inner bg-black/40">
+              <div className="relative w-full h-20 sm:h-24 rounded-xl overflow-hidden shadow-inner bg-black/40">
                 <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
                 {promo.badgeText && (
                   <span
-                    className="absolute top-2 left-2 text-[9px] font-syne font-extrabold uppercase px-2.5 py-0.5 rounded-full text-white shadow-lg"
+                    className="absolute top-1.5 left-1.5 text-[8px] font-syne font-extrabold uppercase px-2 py-0.5 rounded-full text-white shadow-lg"
                     style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
                   >
                     {promo.badgeText}
@@ -631,21 +702,21 @@ const PromoCardOverlay = ({ promos = [], settings }) => {
               </div>
             )}
             <div className="space-y-0.5">
-              <span className={`text-[9px] font-syne uppercase tracking-wider font-bold ${theme.text}`}>
+              <span className={`text-[8px] font-syne uppercase tracking-wider font-bold ${theme.text}`}>
                 {promo.subtitle || 'SPECIAL OFFER'}
               </span>
-              <h3 className="font-syne font-bold text-white text-sm leading-tight line-clamp-2">
+              <h3 className="font-syne font-bold text-white text-xs sm:text-sm leading-tight line-clamp-2">
                 {promo.title}
               </h3>
             </div>
             <div className="flex items-baseline justify-between">
               <div className="flex items-baseline gap-1.5">
-                <span className="font-syne font-extrabold text-lg text-white">{promo.price}</span>
+                <span className="font-syne font-extrabold text-base text-white">{promo.price}</span>
                 {promo.originalPrice && (
-                  <span className="font-dm text-[10px] text-white/40 line-through">{promo.originalPrice}</span>
+                  <span className="font-dm text-[9px] text-white/40 line-through">{promo.originalPrice}</span>
                 )}
               </div>
-              <span className="text-[9px] font-syne tracking-widest text-white/40 uppercase">Order Now</span>
+              <span className="text-[8px] font-syne tracking-widest text-white/40 uppercase">Order Now</span>
             </div>
             {/* Thin closing progress bar — shows how long promo will remain visible */}
             <motion.div
@@ -685,6 +756,7 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
   const tickerDuration = (settings?.tickerDuration || 30) * 1000; // ms
 
   const [showTicker, setShowTicker] = useState(false);
+  const [isOutro, setIsOutro] = useState(false);
   const playerTimeRef = useRef(0);  // updated by polling
 
   useEffect(() => {
@@ -702,24 +774,33 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.videoId, tickerMode, tickerDuration]);
 
-  // For 'both' mode: also show ticker in the last N seconds of the song
-  // We poll the YT player's getCurrentTime + getDuration every 5s.
+  // Polling for Outro state and Ticker 'both' mode
+  // We poll the YT player's getCurrentTime + getDuration every 3s.
   useEffect(() => {
-    if (tickerMode !== 'both') return;
     const poll = setInterval(() => {
       try {
         const player = playerRef.current;
         if (!player || typeof player.getCurrentTime !== 'function') return;
         const current  = player.getCurrentTime();
         const duration = player.getDuration();
-        if (duration > 0 && (duration - current) <= tickerDuration / 1000) {
-          setShowTicker(true);
+        if (duration > 0) {
+          const timeRemaining = duration - current;
+          // Trigger outro collage when 15 seconds remain
+          if (timeRemaining <= 15) {
+            setIsOutro(true);
+          } else {
+            setIsOutro(false);
+          }
+          // Handle ticker 'both' mode logic
+          if (tickerMode === 'both' && timeRemaining <= tickerDuration / 1000) {
+            setShowTicker(true);
+          }
         }
       } catch (_) {}
     }, 3000);
     return () => clearInterval(poll);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerMode, tickerDuration]);
+  }, [tickerMode, tickerDuration, current?.videoId]);
 
   const [isIntroActive, setIsIntroActive] = useState(true);
 
@@ -908,8 +989,13 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
         )}
       </AnimatePresence>
 
+      {/* Promo Collage Engine (End of song) */}
+      <AnimatePresence>
+        {isOutro && <PromoCollageOverlay promos={promos} active={isOutro} />}
+      </AnimatePresence>
+
       {/* Promo Card Overlay Engine */}
-      <PromoCardOverlay promos={promos} settings={settings} />
+      <PromoCardOverlay promos={promos} settings={settings} isOutro={isOutro} />
 
       <NPBar current={current} queue={queue} />
     </motion.div>
