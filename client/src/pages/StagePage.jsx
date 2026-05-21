@@ -516,7 +516,155 @@ const NPBar = ({ current, queue = [] }) => {
   );
 };
 
-const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD, settings }) => {
+// ─── PROMO CARD OVERLAY ENGINE ───────────────────────────────────────────────
+// Non-distracting, timed promo card that cycles through enabled promos.
+// Position, animation style, show duration, and gap are all driven by settings.
+
+const PROMO_ANIM_VARIANTS = {
+  slide: {
+    initial: { x: 300, opacity: 0 },
+    animate: { x: 0, opacity: 1, transition: { type: 'spring', stiffness: 120, damping: 20 } },
+    exit:    { x: 300, opacity: 0, transition: { duration: 0.4, ease: [0.76, 0, 0.24, 1] } }
+  },
+  flip: {
+    initial: { rotateY: 90, opacity: 0, scale: 0.85 },
+    animate: { rotateY: 0, opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 100, damping: 18 } },
+    exit:    { rotateY: -90, opacity: 0, scale: 0.85, transition: { duration: 0.35 } }
+  },
+  fade: {
+    initial: { opacity: 0, scale: 0.93, y: 12 },
+    animate: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] } },
+    exit:    { opacity: 0, scale: 0.93, y: 12, transition: { duration: 0.4 } }
+  }
+};
+
+const PROMO_POSITIONS = {
+  'bottom-right': 'fixed bottom-24 right-8 z-30',
+  'bottom-left':  'fixed bottom-24 left-8 z-30',
+  'top-right':    'fixed top-16 right-8 z-30',
+  'top-left':     'fixed top-16 left-8 z-30'
+};
+
+const PROMO_THEMES = {
+  beer:      { bg: 'from-amber-900/90 to-amber-700/80',  border: 'border-amber-500/40',  text: 'text-amber-300',  glow: 'shadow-[0_0_30px_rgba(245,158,11,0.25)]' },
+  dish:      { bg: 'from-rose-900/90 to-rose-700/80',    border: 'border-rose-500/40',    text: 'text-rose-300',    glow: 'shadow-[0_0_30px_rgba(244,63,94,0.25)]' },
+  happyhour: { bg: 'from-purple-900/90 to-pink-800/80',  border: 'border-pink-500/40',    text: 'text-pink-300',    glow: 'shadow-[0_0_30px_rgba(236,72,153,0.25)]' },
+  custom:    { bg: 'from-cyan-900/90 to-indigo-800/80',  border: 'border-cyan-500/40',    text: 'text-cyan-300',    glow: 'shadow-[0_0_30px_rgba(34,211,238,0.25)]' }
+};
+
+const PromoCardOverlay = ({ promos = [], settings }) => {
+  const position = settings?.promoPosition || 'bottom-right';
+  const animStyle = settings?.promoAnimation || 'slide';
+  const promoDuration = (settings?.promoDuration || 20) * 1000;   // ms
+  const promoGap      = (settings?.promoGap      || 60) * 1000;   // ms
+
+  const activePromos = promos.filter(p => p.enabled);
+  const [visible, setVisible] = useState(false);
+  const [promoIndex, setPromoIndex] = useState(0);
+  const indexRef = useRef(0);
+
+  useEffect(() => {
+    if (activePromos.length === 0) return;
+
+    // Schedule: wait GAP → show for DURATION → wait GAP → show next → ...
+    let showTimer, hideTimer;
+
+    const scheduleShow = (delay) => {
+      showTimer = setTimeout(() => {
+        setVisible(true);
+        hideTimer = setTimeout(() => {
+          setVisible(false);
+          // advance to next promo
+          indexRef.current = (indexRef.current + 1) % activePromos.length;
+          setPromoIndex(indexRef.current);
+          scheduleShow(promoGap);
+        }, promoDuration);
+      }, delay);
+    };
+
+    scheduleShow(promoGap); // first appearance after initial gap
+
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePromos.length, promoDuration, promoGap]);
+
+  if (activePromos.length === 0) return null;
+
+  const promo = activePromos[promoIndex % activePromos.length];
+  const theme = PROMO_THEMES[promo?.type] || PROMO_THEMES.custom;
+  const posClass = PROMO_POSITIONS[position] || PROMO_POSITIONS['bottom-right'];
+  const variants = PROMO_ANIM_VARIANTS[animStyle] || PROMO_ANIM_VARIANTS.slide;
+
+  // Check active hours
+  const now = new Date();
+  const currentHour = now.getHours();
+  const startHour = promo.schedule?.startHour ?? 0;
+  const endHour   = promo.schedule?.endHour   ?? 24;
+  const isActiveHour = currentHour >= startHour && currentHour < endHour;
+
+  return (
+    <div className={posClass} style={{ perspective: '800px' }}>
+      <AnimatePresence mode="wait">
+        {visible && isActiveHour && (
+          <motion.div
+            key={promo.id}
+            variants={variants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={`w-64 p-4 rounded-2xl flex flex-col gap-2.5 border backdrop-blur-xl ${theme.border} bg-gradient-to-br ${theme.bg} ${theme.glow}`}
+          >
+            {promo.imageUrl && (
+              <div className="relative w-full h-28 rounded-xl overflow-hidden shadow-inner bg-black/40">
+                <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
+                {promo.badgeText && (
+                  <span
+                    className="absolute top-2 left-2 text-[9px] font-syne font-extrabold uppercase px-2.5 py-0.5 rounded-full text-white shadow-lg"
+                    style={{ backgroundColor: promo.badgeColor || '#ec4899' }}
+                  >
+                    {promo.badgeText}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              <span className={`text-[9px] font-syne uppercase tracking-wider font-bold ${theme.text}`}>
+                {promo.subtitle || 'SPECIAL OFFER'}
+              </span>
+              <h3 className="font-syne font-bold text-white text-sm leading-tight line-clamp-2">
+                {promo.title}
+              </h3>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-syne font-extrabold text-lg text-white">{promo.price}</span>
+                {promo.originalPrice && (
+                  <span className="font-dm text-[10px] text-white/40 line-through">{promo.originalPrice}</span>
+                )}
+              </div>
+              <span className="text-[9px] font-syne tracking-widest text-white/40 uppercase">Order Now</span>
+            </div>
+            {/* Thin closing progress bar — shows how long promo will remain visible */}
+            <motion.div
+              className={`absolute bottom-0 left-0 h-[2px] rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#D946EF]`}
+              initial={{ width: '100%' }}
+              animate={{ width: '0%' }}
+              transition={{ duration: promoDuration / 1000, ease: 'linear' }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ─── PLAYING SCREEN ───────────────────────────────────────────────────────────
+
+const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD, settings, promos = [] }) => {
+
   if (!current || !current.videoId) return null;
   const playerRef = useRef(null);
   const onEndedRef = useRef(onEnded);
@@ -530,15 +678,59 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
     onPlaybackFailedRef.current = onPlaybackFailed;
   }, [onPlaybackFailed]);
 
+  // ── Ticker visibility logic (replaces hardcoded 15s) ──────────────────────
+  // tickerMode: 'intro' | 'both' | 'always' | 'off'
+  // tickerDuration: seconds to show at intro (and outro if 'both')
+  const tickerMode     = settings?.tickerMode     || 'intro';
+  const tickerDuration = (settings?.tickerDuration || 30) * 1000; // ms
+
+  const [showTicker, setShowTicker] = useState(false);
+  const playerTimeRef = useRef(0);  // updated by polling
+
+  useEffect(() => {
+    setShowTicker(false);
+    if (tickerMode === 'off' || !settings?.promoText) return;
+    if (tickerMode === 'always') { setShowTicker(true); return; }
+
+    // Show at intro
+    setShowTicker(true);
+    const hideTimer = setTimeout(() => {
+      if (tickerMode === 'intro') setShowTicker(false);
+    }, tickerDuration);
+
+    return () => clearTimeout(hideTimer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.videoId, tickerMode, tickerDuration]);
+
+  // For 'both' mode: also show ticker in the last N seconds of the song
+  // We poll the YT player's getCurrentTime + getDuration every 5s.
+  useEffect(() => {
+    if (tickerMode !== 'both') return;
+    const poll = setInterval(() => {
+      try {
+        const player = playerRef.current;
+        if (!player || typeof player.getCurrentTime !== 'function') return;
+        const current  = player.getCurrentTime();
+        const duration = player.getDuration();
+        if (duration > 0 && (duration - current) <= tickerDuration / 1000) {
+          setShowTicker(true);
+        }
+      } catch (_) {}
+    }, 3000);
+    return () => clearInterval(poll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickerMode, tickerDuration]);
+
   const [isIntroActive, setIsIntroActive] = useState(true);
 
   useEffect(() => {
     setIsIntroActive(true);
     const timer = setTimeout(() => {
       setIsIntroActive(false);
-    }, 15000); // 15 seconds
+    }, 15000);
     return () => clearTimeout(timer);
-  }, [current.videoId]);
+  }, [current?.videoId]);
+
 
   useEffect(() => {
     if (!current || !current.videoId) return;
@@ -692,26 +884,38 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
         Next Singer <span className="animate-pulse">&rarr;</span>
       </motion.div>
 
-      {/* Rolling Promotional slogan ticker */}
-      {settings?.promoText && (
-        <div className="fixed bottom-[96px] left-0 w-full z-20 overflow-hidden bg-black/40 border-y border-white/5 backdrop-blur-md py-2.5 shadow-2xl">
-          <div className="marquee-container">
-            <div className="marquee-content flex gap-32 text-[10px] font-syne font-bold uppercase tracking-[0.45em] text-[#D946EF] drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]">
-               <span>{settings.promoText}</span>
-               <span>{settings.promoText}</span>
-               <span>{settings.promoText}</span>
-               <span>{settings.promoText}</span>
-               <span>{settings.promoText}</span>
-               <span>{settings.promoText}</span>
+      {/* Rolling Promotional ticker — visibility controlled by tickerMode */}
+      <AnimatePresence>
+        {settings?.promoText && showTicker && (
+          <motion.div
+            initial={{ y: 48, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 48, opacity: 0 }}
+            transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+            className="fixed bottom-[96px] left-0 w-full z-20 overflow-hidden bg-black/50 border-y border-white/5 backdrop-blur-md py-2.5 shadow-2xl"
+          >
+            <div className="marquee-container">
+              <div className="marquee-content flex gap-32 text-[10px] font-syne font-bold uppercase tracking-[0.45em] text-[#D946EF] drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]">
+                <span>{settings.promoText}</span>
+                <span>{settings.promoText}</span>
+                <span>{settings.promoText}</span>
+                <span>{settings.promoText}</span>
+                <span>{settings.promoText}</span>
+                <span>{settings.promoText}</span>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Promo Card Overlay Engine */}
+      <PromoCardOverlay promos={promos} settings={settings} />
 
       <NPBar current={current} queue={queue} />
     </motion.div>
   );
 };
+
 
 
 const PromoPlayingScreen = ({ video, onEnded, onPlaybackFailed, settings }) => {
@@ -1530,8 +1734,10 @@ export default function StagePage() {
               onPlaybackFailed={handlePlaybackFailed}
               showHUD={showHUD}
               settings={settings}
+              promos={promos}
             />
           )}
+
 
           {stage === ST.PROMO_PLAYING && currentCoverVideo && (
             <PromoPlayingScreen 

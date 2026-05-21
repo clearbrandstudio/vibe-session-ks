@@ -40,15 +40,23 @@ export default function AdminPage() {
   // Config State
   const [settings, setSettings] = useState({
     businessName: '',
-    youtubeApiKeySet: false,  // Whether a key is saved server-side
-    youtubeApiKeyInput: '',   // Input field (new key entry only)
+    youtubeApiKeySet: false,
+    youtubeApiKeyInput: '',
     promoText: '',
     prepDuration: 15,
     vignette: 25,
     brightness: 115,
     contrast: 100,
     overlayOpacity: 25,
-    ambientMode: 'bar'
+    ambientMode: 'bar',
+    // Promo Display Engine
+    promoPosition: 'bottom-right',
+    promoAnimation: 'slide',
+    promoDuration: 20,
+    promoGap: 60,
+    // Ticker timing
+    tickerMode: 'intro',
+    tickerDuration: 30
   });
 
   // Feature Lists
@@ -74,14 +82,22 @@ export default function AdminPage() {
         setSettings({
           businessName: settingsData.businessName || '',
           youtubeApiKeySet: settingsData.youtubeApiKeySet || false,
-          youtubeApiKeyInput: '',  // Never pre-fill the key input
+          youtubeApiKeyInput: '',
           promoText: settingsData.promoText || '',
           prepDuration: settingsData.prepDuration || 15,
           vignette: settingsData.vignette !== undefined ? settingsData.vignette : 25,
           brightness: settingsData.brightness !== undefined ? settingsData.brightness : 115,
           contrast: settingsData.contrast !== undefined ? settingsData.contrast : 100,
           overlayOpacity: settingsData.overlayOpacity !== undefined ? settingsData.overlayOpacity : 25,
-          ambientMode: settingsData.ambientMode || 'bar'
+          ambientMode: settingsData.ambientMode || 'bar',
+          // Promo Display Engine
+          promoPosition: settingsData.promoPosition || 'bottom-right',
+          promoAnimation: settingsData.promoAnimation || 'slide',
+          promoDuration: settingsData.promoDuration !== undefined ? settingsData.promoDuration : 20,
+          promoGap: settingsData.promoGap !== undefined ? settingsData.promoGap : 60,
+          // Ticker timing
+          tickerMode: settingsData.tickerMode || 'intro',
+          tickerDuration: settingsData.tickerDuration !== undefined ? settingsData.tickerDuration : 30
         });
 
         const promosRes = await fetch(`/api/promos?room=${roomID}`);
@@ -120,7 +136,15 @@ export default function AdminPage() {
         brightness: settings.brightness,
         contrast: settings.contrast,
         overlayOpacity: settings.overlayOpacity,
-        ambientMode: settings.ambientMode
+        ambientMode: settings.ambientMode,
+        // Promo Display Engine
+        promoPosition: settings.promoPosition,
+        promoAnimation: settings.promoAnimation,
+        promoDuration: settings.promoDuration,
+        promoGap: settings.promoGap,
+        // Ticker timing
+        tickerMode: settings.tickerMode,
+        tickerDuration: settings.tickerDuration
       };
       if (settings.youtubeApiKeyInput && settings.youtubeApiKeyInput.trim().length > 5) {
         payload.youtubeApiKey = settings.youtubeApiKeyInput.trim();
@@ -409,8 +433,8 @@ export default function AdminPage() {
   const tabs = [
     { id: 'general', label: 'Settings', icon: Settings },
     { id: 'display', label: 'Display Controls', icon: Tv },
-    { id: 'promos', label: 'Promos', icon: Megaphone },
-    { id: 'idlePlaylist', label: 'Idle Playlist', icon: Layout },
+    { id: 'promos', label: 'Promos', icon: Megaphone, badge: promos.length > 0 ? promos.length : null },
+    { id: 'idlePlaylist', label: 'Idle Playlist', icon: Layout, badge: idlePlaylist.length > 0 ? idlePlaylist.length : null },
     { id: 'signage', label: 'Signage', icon: Volume2 }
   ];
 
@@ -471,7 +495,7 @@ export default function AdminPage() {
 
         {/* NAVIGATION TABS */}
         <nav className="flex gap-1.5 p-1 bg-white/5 border border-white/5 rounded-2xl mb-8 overflow-x-auto no-scrollbar">
-          {tabs.map((tab) => {
+        {tabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -491,6 +515,16 @@ export default function AdminPage() {
                 )}
                 <Icon size={14} className={active ? 'text-[#D946EF] z-10' : 'text-white/40 z-10'} />
                 <span className="relative z-10">{tab.label}</span>
+                {/* Item count badge — makes Promos & Idle Playlist discoverable */}
+                {tab.badge != null && (
+                  <span className={`relative z-10 ml-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[8px] font-bold px-1 ${
+                    active 
+                      ? 'bg-[#D946EF] text-white' 
+                      : 'bg-[#8B5CF6]/30 text-[#D946EF]'
+                  }`}>
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -576,17 +610,30 @@ export default function AdminPage() {
               <div className="glass-card-stage p-8 space-y-6">
                 <h3 className="font-syne text-[11px] font-extrabold uppercase tracking-wider text-[#D946EF] flex items-center gap-2">
                   <Power size={13} />
-                  Display Preset Tips
+                  Quick Access
                 </h3>
-                <div className="space-y-4 font-dm text-xs text-white/60 leading-relaxed">
-                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/5">
-                    <p className="font-bold text-white mb-1">Tablet Control Mode</p>
-                    <p>Stage settings can also be modified instantly using the Kiosk tablet interface. Use presets to instantly match lighting.</p>
-                  </div>
-                  <div className="p-3.5 rounded-xl bg-white/5 border border-white/5">
-                    <p className="font-bold text-white mb-1">Stage Synchronization</p>
-                    <p>Stage monitor screens listening to WebSocket handles will redraw colors, brightness levels, and tickers instantly without reboots.</p>
-                  </div>
+                <div className="space-y-3 font-dm text-xs text-white/60 leading-relaxed">
+                  <button onClick={() => setActiveTab('idlePlaylist')} className="w-full p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-[#8B5CF6]/40 hover:bg-[#8B5CF6]/5 transition-all text-left group">
+                    <p className="font-bold text-white group-hover:text-[#D946EF] transition-colors flex items-center justify-between">
+                      🎬 Idle Playlist
+                      <span className="text-[9px] font-mono text-[#8B5CF6]">{idlePlaylist.length} videos →</span>
+                    </p>
+                    <p className="text-white/40 text-[10px] mt-0.5">YouTube music videos that play when the stage has no singers queued.</p>
+                  </button>
+                  <button onClick={() => setActiveTab('promos')} className="w-full p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-[#D946EF]/40 hover:bg-[#D946EF]/5 transition-all text-left group">
+                    <p className="font-bold text-white group-hover:text-[#D946EF] transition-colors flex items-center justify-between">
+                      🍽️ Promo Cards
+                      <span className="text-[9px] font-mono text-[#8B5CF6]">{promos.length} cards →</span>
+                    </p>
+                    <p className="text-white/40 text-[10px] mt-0.5">Dish / drink cards that appear on stage during songs — position, timing, and animation configurable.</p>
+                  </button>
+                  <button onClick={() => setActiveTab('signage')} className="w-full p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-[#8B5CF6]/40 hover:bg-[#8B5CF6]/5 transition-all text-left group">
+                    <p className="font-bold text-white group-hover:text-[#D946EF] transition-colors flex items-center justify-between">
+                      📜 Rolling Ticker
+                      <span className="text-[9px] font-mono text-[#8B5CF6]">{settings.promoText ? 'Active →' : 'Empty →'}</span>
+                    </p>
+                    <p className="text-white/40 text-[10px] mt-0.5">Scrolling text announcement banner shown at the bottom of the stage display.</p>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -818,6 +865,136 @@ export default function AdminPage() {
                       );
                     })
                   )}
+                </div>
+
+                {/* ── PROMO DISPLAY ENGINE SETTINGS ─────────────────────── */}
+                <div className="glass-card-stage p-5 space-y-5 mt-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-syne text-[10px] font-extrabold uppercase tracking-widest text-[#D946EF] flex items-center gap-1.5">
+                      <Sliders size={11} /> Display Engine
+                    </h3>
+                    <motion.button
+                      whileTap={{ scale: 0.96 }}
+                      onClick={handleSaveSettings}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-[#8B5CF6] to-[#D946EF] rounded-lg font-syne font-bold text-[9px] uppercase tracking-wider"
+                    >
+                      <Save size={9} /> Save
+                    </motion.button>
+                  </div>
+
+                  {/* Position Picker */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-syne font-bold uppercase tracking-wider text-white/50">Card Position on Screen</label>
+                    {/* Mini TV diagram with 4 quadrant buttons */}
+                    <div className="relative w-full aspect-[16/9] max-h-28 rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+                      <div className="absolute inset-0 perspective-grid opacity-20" />
+                      {[
+                        { id: 'top-left',     label: '↖', cls: 'top-2 left-2' },
+                        { id: 'top-right',    label: '↗', cls: 'top-2 right-2' },
+                        { id: 'bottom-left',  label: '↙', cls: 'bottom-2 left-2' },
+                        { id: 'bottom-right', label: '↘', cls: 'bottom-2 right-2' },
+                      ].map(pos => (
+                        <button
+                          key={pos.id}
+                          onClick={() => setSettings(s => ({ ...s, promoPosition: pos.id }))}
+                          className={`absolute w-9 h-9 rounded-lg font-mono text-base flex items-center justify-center transition-all ${
+                            settings.promoPosition === pos.id
+                              ? 'bg-[#D946EF] text-white shadow-[0_0_12px_rgba(217,70,239,0.6)]'
+                              : 'bg-white/10 text-white/50 hover:bg-white/20 hover:text-white'
+                          } ${pos.cls}`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="font-syne text-[8px] text-white/20 uppercase tracking-widest">Stage Screen</span>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-white/30 italic">Selected: <span className="text-[#D946EF] font-bold">{settings.promoPosition}</span></p>
+                  </div>
+
+                  {/* Animation Style */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-syne font-bold uppercase tracking-wider text-white/50">Card Entrance Animation</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'slide', label: '⟶ Slide In', desc: 'Sweeps from side' },
+                        { id: 'flip',  label: '⟳ Card Flip', desc: '3D perspective flip' },
+                        { id: 'fade',  label: '◉ Fade In',   desc: 'Soft dissolve' },
+                      ].map(anim => (
+                        <button
+                          key={anim.id}
+                          onClick={() => setSettings(s => ({ ...s, promoAnimation: anim.id }))}
+                          className={`p-2.5 rounded-xl border text-left text-[9px] font-syne font-bold transition-all ${
+                            settings.promoAnimation === anim.id
+                              ? 'bg-[#8B5CF6]/20 border-[#D946EF]/60 text-white'
+                              : 'bg-white/5 border-white/5 text-white/40 hover:border-white/20 hover:text-white/70'
+                          }`}
+                        >
+                          <div className="font-extrabold mb-0.5">{anim.label}</div>
+                          <div className="text-[8px] font-normal opacity-60">{anim.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Duration + Gap sliders */}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] font-dm">
+                        <span className="text-white/60 font-bold">Visible Duration</span>
+                        <span className="font-mono text-[#D946EF] font-bold">{settings.promoDuration}s</span>
+                      </div>
+                      <input type="range" min="10" max="30" step="5"
+                        className="w-full accent-[#D946EF] h-1 rounded-lg cursor-pointer"
+                        value={settings.promoDuration}
+                        onChange={(e) => setSettings(s => ({ ...s, promoDuration: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-[9px] text-white/25">How long each promo card stays on screen</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] font-dm">
+                        <span className="text-white/60 font-bold">Gap Between Appearances</span>
+                        <span className="font-mono text-[#D946EF] font-bold">{settings.promoGap}s</span>
+                      </div>
+                      <input type="range" min="30" max="120" step="15"
+                        className="w-full accent-[#D946EF] h-1 rounded-lg cursor-pointer"
+                        value={settings.promoGap}
+                        onChange={(e) => setSettings(s => ({ ...s, promoGap: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-[9px] text-white/25">Time between promo card appearances (keeps it non-distracting)</p>
+                    </div>
+                  </div>
+
+                  {/* Ticker mode */}
+                  <div className="space-y-2 pt-1 border-t border-white/5">
+                    <label className="block text-[10px] font-syne font-bold uppercase tracking-wider text-white/50">Rolling Ticker Timing</label>
+                    <select
+                      value={settings.tickerMode}
+                      onChange={(e) => setSettings(s => ({ ...s, tickerMode: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white font-dm text-xs focus:outline-none focus:border-[#D946EF]/50 transition-all cursor-pointer"
+                    >
+                      <option value="intro">Show only at song start ({settings.tickerDuration}s)</option>
+                      <option value="both">Intro + Outro (first & last {settings.tickerDuration}s)</option>
+                      <option value="always">Always visible during song</option>
+                      <option value="off">Off — never show ticker</option>
+                    </select>
+
+                    {settings.tickerMode !== 'off' && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex justify-between text-[10px] font-dm">
+                          <span className="text-white/50">Ticker Duration</span>
+                          <span className="font-mono text-[#D946EF] font-bold">{settings.tickerDuration}s</span>
+                        </div>
+                        <input type="range" min="15" max="60" step="5"
+                          className="w-full accent-[#D946EF] h-1 rounded-lg cursor-pointer"
+                          value={settings.tickerDuration}
+                          onChange={(e) => setSettings(s => ({ ...s, tickerDuration: parseInt(e.target.value) }))}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

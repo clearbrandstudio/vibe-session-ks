@@ -243,7 +243,15 @@ app.get('/api/settings', (req, res) => {
       brightness: 115,
       contrast: 100,
       overlayOpacity: 25,
-      ambientMode: 'bar'
+      ambientMode: 'bar',
+      // Promo Display Engine defaults
+      promoPosition: 'bottom-right',  // bottom-left | bottom-right | top-right | top-left
+      promoAnimation: 'slide',         // slide | flip | fade
+      promoDuration: 20,               // seconds each promo card stays visible
+      promoGap: 60,                    // seconds between promo appearances
+      // Ticker (rolling text) timing defaults
+      tickerMode: 'intro',             // intro | both | always | off
+      tickerDuration: 30               // seconds ticker shows at song start
     };
     
     if (!fs.existsSync(settingsPath)) {
@@ -296,7 +304,15 @@ app.post('/api/settings', (req, res) => {
       brightness,
       contrast,
       overlayOpacity,
-      ambientMode
+      ambientMode,
+      // Promo Display Engine
+      promoPosition,
+      promoAnimation,
+      promoDuration,
+      promoGap,
+      // Ticker timing
+      tickerMode,
+      tickerDuration
     } = req.body;
     
     const settingsPath = path.join(__dirname, 'settings.json');
@@ -311,7 +327,6 @@ app.post('/api/settings', (req, res) => {
       allSettings.youtubeApiKey = youtubeApiKey.trim();
     }
     
-    // Bar-tuned defaults (brighter than previous defaults)
     const prev = allSettings.rooms[roomID] || {};
     allSettings.rooms[roomID] = {
       ...prev,
@@ -322,7 +337,15 @@ app.post('/api/settings', (req, res) => {
       brightness: brightness !== undefined ? parseInt(brightness) : (prev.brightness !== undefined ? parseInt(prev.brightness) : 115),
       contrast: contrast !== undefined ? parseInt(contrast) : (prev.contrast !== undefined ? parseInt(prev.contrast) : 100),
       overlayOpacity: overlayOpacity !== undefined ? parseInt(overlayOpacity) : (prev.overlayOpacity !== undefined ? parseInt(prev.overlayOpacity) : 25),
-      ambientMode: ambientMode || prev.ambientMode || 'bar'
+      ambientMode: ambientMode || prev.ambientMode || 'bar',
+      // Promo Display Engine
+      promoPosition: promoPosition || prev.promoPosition || 'bottom-right',
+      promoAnimation: promoAnimation || prev.promoAnimation || 'slide',
+      promoDuration: promoDuration !== undefined ? parseInt(promoDuration) : (prev.promoDuration !== undefined ? parseInt(prev.promoDuration) : 20),
+      promoGap: promoGap !== undefined ? parseInt(promoGap) : (prev.promoGap !== undefined ? parseInt(prev.promoGap) : 60),
+      // Ticker timing
+      tickerMode: tickerMode || prev.tickerMode || 'intro',
+      tickerDuration: tickerDuration !== undefined ? parseInt(tickerDuration) : (prev.tickerDuration !== undefined ? parseInt(prev.tickerDuration) : 30)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
