@@ -1404,14 +1404,7 @@ export default function StagePage() {
     });
   }, [promos]);
 
-  // Promo card rotation timer (Improvement #2)
-  useEffect(() => {
-    if (activePromos.length <= 1) return;
-    const interval = setInterval(() => {
-      setActivePromoIndex(prev => (prev + 1) % activePromos.length);
-    }, 15000); // Rotate every 15s
-    return () => clearInterval(interval);
-  }, [activePromos]);
+  // The old promo card rotation timer was removed here to prevent React crashes.
 
   // Cover Video Autoplay Inactivity Timer: after 30 seconds of total idle silence, start Idle Playlist
   useEffect(() => {
