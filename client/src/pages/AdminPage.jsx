@@ -493,39 +493,55 @@ export default function AdminPage() {
           )}
         </AnimatePresence>
 
-        {/* NAVIGATION TABS */}
-        <nav className="flex gap-1.5 p-1 bg-white/5 border border-white/5 rounded-2xl mb-8 overflow-x-auto no-scrollbar">
-        {tabs.map((tab) => {
+        {/* NAVIGATION — LARGE CARD GRID (impossible to miss) */}
+        <nav className="grid grid-cols-5 gap-3 mb-8">
+          {tabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
-              <button
+              <motion.button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-syne font-bold text-[10px] uppercase tracking-wider transition-all duration-300 shrink-0 ${
-                  active ? 'text-white' : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                whileHover={{ scale: 1.03, y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                className={`relative flex flex-col items-center justify-center gap-2 py-5 px-3 rounded-2xl font-syne font-bold transition-all duration-300 border overflow-hidden ${
+                  active 
+                    ? 'bg-gradient-to-br from-[#8B5CF6]/25 to-[#D946EF]/15 border-[#D946EF]/50 text-white shadow-[0_0_20px_rgba(217,70,239,0.25)]' 
+                    : 'bg-white/4 border-white/8 text-white/50 hover:bg-white/8 hover:border-white/20 hover:text-white/80'
                 }`}
               >
                 {active && (
                   <motion.div
-                    layoutId="activeTabIndicator"
-                    className="absolute inset-0 bg-gradient-to-r from-[#8b5cf6]/20 to-[#d946ef]/20 border border-[#8b5cf6]/35 rounded-xl z-0"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                    layoutId="activeNavCard"
+                    className="absolute inset-0 bg-gradient-to-br from-[#8B5CF6]/15 to-[#D946EF]/10 z-0"
+                    transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
                   />
                 )}
-                <Icon size={14} className={active ? 'text-[#D946EF] z-10' : 'text-white/40 z-10'} />
-                <span className="relative z-10">{tab.label}</span>
-                {/* Item count badge — makes Promos & Idle Playlist discoverable */}
+                {/* Glowing top line when active */}
+                {active && (
+                  <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-[#D946EF] to-transparent rounded-full" />
+                )}
+                <div className={`relative z-10 w-10 h-10 rounded-xl flex items-center justify-center ${
+                  active 
+                    ? 'bg-gradient-to-br from-[#8B5CF6] to-[#D946EF] shadow-[0_0_16px_rgba(217,70,239,0.5)]'
+                    : 'bg-white/8'
+                }`}>
+                  <Icon size={18} className={active ? 'text-white' : 'text-white/50'} />
+                </div>
+                <span className={`relative z-10 text-[9px] uppercase tracking-wider leading-tight text-center ${
+                  active ? 'text-white' : 'text-white/50'
+                }`}>{tab.label}</span>
+                {/* Count badge */}
                 {tab.badge != null && (
-                  <span className={`relative z-10 ml-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[8px] font-bold px-1 ${
+                  <span className={`relative z-10 min-w-[20px] h-5 rounded-full flex items-center justify-center text-[9px] font-extrabold px-1.5 ${
                     active 
                       ? 'bg-[#D946EF] text-white' 
-                      : 'bg-[#8B5CF6]/30 text-[#D946EF]'
+                      : 'bg-[#8B5CF6]/25 text-[#D946EF] border border-[#D946EF]/30'
                   }`}>
                     {tab.badge}
                   </span>
                 )}
-              </button>
+              </motion.button>
             );
           })}
         </nav>
