@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import socket from '../socket';
-import { Layout, Tv, Settings } from 'lucide-react';
+import { Layout, Tv, Settings, Sun } from 'lucide-react';
 
 /** 
  * VIBE SESSIONS KARAOKE — CINEMATIC STAGE DISPLAY
@@ -607,9 +607,12 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
 
   const isHUDVisible = isIntroActive && showHUD;
   
-  const brightVal = settings?.brightness !== undefined ? settings.brightness : 100;
-  const contrastVal = settings?.contrast !== undefined ? settings.contrast : 100;
-  const opacityVal = settings?.overlayOpacity !== undefined ? settings.overlayOpacity : 40;
+  // Safe defaults: if settings haven't loaded yet, use conservative values
+  // that won't black-out the screen. overlayOpacity was defaulting to 40 which
+  // combined with from-black/to-black gradient caused a fully black video layer.
+  const brightVal = settings?.brightness ?? 100;
+  const contrastVal = settings?.contrast ?? 100;
+  const opacityVal = settings?.overlayOpacity ?? 10; // 10% safe default (was 40 — too dark)
 
   return (
     <motion.div 

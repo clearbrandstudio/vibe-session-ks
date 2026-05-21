@@ -37,7 +37,23 @@ export default {
         'gradient-apple': 'linear-gradient(135deg, #007AFF 0%, #FF2D55 100%)',
         'gradient-cosmic': 'linear-gradient(45deg, #050505 0%, #121212 100%)',
         'gradient-premium': 'linear-gradient(135deg, rgba(232,168,56,0.8), rgba(123,94,167,0.8))',
-      }
+      },
+      animation: {
+        // Stage splash entrance — referenced as animate-[fadeInUp_1s_ease]
+        'fade-in-up': 'fadeInUp 1s ease both',
+        // Brightness control Sun icon slow spin — referenced as animate-spin-slow
+        'spin-slow': 'spin-slow 4s linear infinite',
+      },
+      keyframes: {
+        fadeInUp: {
+          from: { opacity: '0', transform: 'translateY(32px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+        'spin-slow': {
+          from: { transform: 'rotate(0deg)' },
+          to:   { transform: 'rotate(360deg)' },
+        },
+      },
     },
   },
   plugins: [],

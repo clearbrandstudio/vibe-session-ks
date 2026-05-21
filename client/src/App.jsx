@@ -4,13 +4,18 @@ import LandingPage from './pages/LandingPage'
 import KioskPage from './pages/KioskPage'
 import StagePage from './pages/StagePage'
 import AdminPage from './pages/AdminPage'
+import { StageErrorBoundary } from './components/StageErrorBoundary'
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/kiosk" element={<KioskPage />} />
-      <Route path="/stage" element={<StagePage />} />
+      <Route path="/stage" element={
+        <StageErrorBoundary>
+          <StagePage />
+        </StageErrorBoundary>
+      } />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
