@@ -1039,38 +1039,75 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
       </motion.div>
 
       {/* Main glass-card intro display */}
-      <motion.div 
-        animate={{ 
-          opacity: isHUDVisible ? 1 : 0, 
-          y: isHUDVisible ? 0 : -40,
-          scale: isHUDVisible ? 1 : 0.9 
-        }}
-        transition={{ duration: 1.0, ease: "easeInOut" }}
-        className="glass-card-stage z-10 p-10 md:p-16 text-center space-y-6 pointer-events-none"
-        style={{
-          width: `min(${Math.round(580 * (settings?.hudCardScale ?? 100) / 100)}px, 88vw)`,
-          maxWidth: '95vw'
-        }}
-      >
-        <span className="font-syne text-[10px] uppercase tracking-[0.4em] animate-[labelGlow_3s_infinite]">Now Performing</span>
-        <h1 className="LuxeFont text-white drop-shadow-[0_0_25px_rgba(217,70,239,0.8)] text-[clamp(40px,7.5vw,88px)] leading-[1.05] tracking-tight">{current.singerName}</h1>
-        <div className="w-16 h-[1px] mx-auto bg-gradient-to-r from-transparent via-[#db2777] to-transparent shadow-[0_0_10px_rgba(217,70,239,0.5)]" />
-        <div className="space-y-1">
-          <p className="font-syne text-[clamp(15px,2.2vw,24px)] text-[#f8f4ff]/80 tracking-wide">{current.title}</p>
-          <p className="font-dm text-[clamp(12px,1.6vw,17px)] text-[#7c6f9a]">{current.artist}</p>
-        </div>
-        <div className="opacity-70 pt-4">
-          <Waveform active={isHUDVisible} />
-        </div>
-      </motion.div>
+      {(() => {
+        const hudScale = (settings?.hudCardScale ?? 100) / 100;
+        return (
+          <>
+            <motion.div 
+              animate={{ 
+                opacity: isHUDVisible ? 1 : 0, 
+                y: isHUDVisible ? 0 : -40,
+                scale: isHUDVisible ? 1 : 0.9 
+              }}
+              transition={{ duration: 1.0, ease: "easeInOut" }}
+              className="glass-card-stage z-10 text-center pointer-events-none animate-fadeInUp"
+              style={{
+                width: `min(${Math.round(580 * hudScale)}px, 88vw)`,
+                maxWidth: '95vw',
+                padding: `${Math.round(40 * hudScale)}px ${Math.round(64 * hudScale)}px`,
+                borderRadius: `${Math.round(20 * hudScale)}px`,
+                gap: `${Math.round(24 * hudScale)}px`,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <span 
+                className="font-syne uppercase tracking-[0.4em] animate-[labelGlow_3s_infinite]"
+                style={{ fontSize: `calc(10px * ${hudScale})` }}
+              >
+                Now Performing
+              </span>
+              <h1 
+                className="LuxeFont text-white drop-shadow-[0_0_25px_rgba(217,70,239,0.8)] leading-[1.05] tracking-tight"
+                style={{ fontSize: `calc(clamp(40px, 7.5vw, 88px) * ${hudScale})` }}
+              >
+                {current.singerName}
+              </h1>
+              <div 
+                className="h-[1px] bg-gradient-to-r from-transparent via-[#db2777] to-transparent shadow-[0_0_10px_rgba(217,70,239,0.5)]"
+                style={{ width: `calc(64px * ${hudScale})` }}
+              />
+              <div style={{ gap: `calc(4px * ${hudScale})`, display: 'flex', flexDirection: 'column' }}>
+                <p 
+                  className="font-syne text-[#f8f4ff]/80 tracking-wide"
+                  style={{ fontSize: `calc(clamp(15px, 2.2vw, 24px) * ${hudScale})` }}
+                >
+                  {current.title}
+                </p>
+                <p 
+                  className="font-dm text-[#7c6f9a]"
+                  style={{ fontSize: `calc(clamp(12px, 1.6vw, 17px) * ${hudScale})` }}
+                >
+                  {current.artist}
+                </p>
+              </div>
+              <div className="opacity-70" style={{ paddingTop: `calc(16px * ${hudScale})` }}>
+                <Waveform active={isHUDVisible} />
+              </div>
+            </motion.div>
 
-      <motion.div 
-        animate={{ opacity: isHUDVisible ? 1 : 0 }}
-        transition={{ delay: isHUDVisible ? 0.6 : 0, duration: 0.5 }}
-        className="mt-8 text-[#7c6f9a]/60 font-syne text-[11px] uppercase tracking-[0.2em] flex items-center gap-2 pointer-events-none"
-      >
-        Next Singer <span className="animate-pulse">&rarr;</span>
-      </motion.div>
+            <motion.div 
+              animate={{ opacity: isHUDVisible ? 1 : 0 }}
+              transition={{ delay: isHUDVisible ? 0.6 : 0, duration: 0.5 }}
+              className="mt-8 text-[#7c6f9a]/60 font-syne uppercase tracking-[0.2em] flex items-center gap-2 pointer-events-none"
+              style={{ fontSize: `calc(11px * ${hudScale})` }}
+            >
+              Next Singer <span className="animate-pulse">&rarr;</span>
+            </motion.div>
+          </>
+        );
+      })()}
 
       {/* Rolling Promotional ticker — visibility controlled by tickerMode */}
       <AnimatePresence>
