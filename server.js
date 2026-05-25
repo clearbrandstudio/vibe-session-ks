@@ -470,6 +470,99 @@ app.post('/api/settings/upload-logo', (req, res) => {
 });
 
 // ──────────────────────────────────────────────
+// REST – Raffle Draw API
+// ──────────────────────────────────────────────
+
+function getRaffleData() {
+  const rafflePath = path.join(__dirname, 'raffle.json');
+  if (!fs.existsSync(rafflePath)) {
+    const defaultData = { rooms: {} };
+    fs.writeFileSync(rafflePath, JSON.stringify(defaultData, null, 2));
+    return defaultData;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(rafflePath, 'utf8'));
+  } catch (e) {
+    return { rooms: {} };
+  }
+}
+
+function saveRaffleData(data) {
+  const rafflePath = path.join(__dirname, 'raffle.json');
+  fs.writeFileSync(rafflePath, JSON.stringify(data, null, 2));
+}
+
+// GET /api/raffle?room=roomID
+app.get('/api/raffle', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const data = getRaffleData();
+  const roomRaffle = data.rooms[roomID] || { participants: [], winners: [] };
+  res.json(roomRaffle);
+});
+
+// POST /api/raffle/participants?room=roomID
+app.post('/api/raffle/participants', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const { participants } = req.body;
+  if (!Array.isArray(participants)) {
+    return res.status(400).json({ error: 'participants must be an array' });
+  }
+
+  const data = getRaffleData();
+  if (!data.rooms[roomID]) {
+    data.rooms[roomID] = { participants: [], winners: [] };
+  }
+  data.rooms[roomID].participants = participants;
+  saveRaffleData(data);
+
+  // Broadcast the update via sockets
+  io.to(roomID).emit('raffle:updated', data.rooms[roomID]);
+
+  res.json({ success: true, raffle: data.rooms[roomID] });
+});
+
+// POST /api/raffle/draw?room=roomID
+app.post('/api/raffle/draw', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const { winner } = req.body;
+
+  if (!winner) {
+    return res.status(400).json({ error: 'winner name is required' });
+  }
+
+  const data = getRaffleData();
+  if (!data.rooms[roomID]) {
+    data.rooms[roomID] = { participants: [], winners: [] };
+  }
+
+  const newWinner = {
+    name: winner,
+    drawnAt: new Date().toISOString(),
+    id: 'w-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+  };
+
+  data.rooms[roomID].winners.unshift(newWinner);
+  saveRaffleData(data);
+
+  // Broadcast draw event via sockets so big stage and other controllers sync
+  io.to(roomID).emit('raffle:draw', { winner: newWinner, raffle: data.rooms[roomID] });
+
+  res.json({ success: true, winner: newWinner, raffle: data.rooms[roomID] });
+});
+
+// DELETE /api/raffle/winners?room=roomID
+app.delete('/api/raffle/winners', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const data = getRaffleData();
+  if (data.rooms[roomID]) {
+    data.rooms[roomID].winners = [];
+    saveRaffleData(data);
+    io.to(roomID).emit('raffle:updated', data.rooms[roomID]);
+  }
+  res.json({ success: true });
+});
+
+// ──────────────────────────────────────────────
 // REST – Promotional Cards API (Improvement #2)
 // ──────────────────────────────────────────────
 app.get('/api/promos', (req, res) => {
