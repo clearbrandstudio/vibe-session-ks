@@ -2,9 +2,121 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Trophy, Settings, Play, Volume2, VolumeX, Trash2, Users, 
-  RefreshCw, Sliders, Sparkles, Plus, Award, Check, Layout, HelpCircle
+  RefreshCw, Sliders, Sparkles, Plus, Award, Check, Layout, HelpCircle,
+  AlertCircle
 } from 'lucide-react';
 import io from 'socket.io-client';
+
+// ── ATMOSPHERE COMPONENTS FROM STAGE ──
+const Atmo = ({ vignette, brightness }) => {
+  const finalVignette = vignette !== undefined ? vignette : 25;
+  const brightVal = brightness !== undefined ? brightness : 115;
+  const factor = Math.max(0.1, 100 / brightVal);
+  const meshOpacity = 0.55 * factor;
+  
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden bg-[#04020a] z-0">
+      {/* Layer 1: Animated Mesh Gradients */}
+      <div className="absolute inset-0 transition-opacity duration-500" style={{ opacity: meshOpacity }}>
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 20% 80%, #4c1d95 0%, transparent 50%), radial-gradient(circle at 80% 20%, #db2777 0%, transparent 50%), radial-gradient(circle at 50% 50%, #7c3aed 0%, transparent 60%)',
+            animation: 'meshA 12s ease-in-out infinite'
+          }}
+        />
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: 'radial-gradient(circle at 70% 80%, #9d174d 0%, transparent 50%), radial-gradient(circle at 10% 20%, #5b21b6 0%, transparent 50%)',
+            animation: 'meshB 15s ease-in-out infinite'
+          }}
+        />
+      </div>
+
+      {/* Layer 2: Perspective Grid */}
+      <div className="perspective-grid absolute inset-0 z-1" />
+
+      {/* Layer 3: SVG Noise */}
+      <div className="absolute inset-0 z-2 opacity-[0.04]">
+        <svg width="100%" height="100%">
+          <filter id="nf">
+            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+            <feColorMatrix type="saturate" values="0"/>
+          </filter>
+          <rect width="100%" height="100%" filter="url(#nf)"/>
+        </svg>
+      </div>
+
+      {/* Layer 4: Scanlines */}
+      <div className="scanlines absolute inset-0 z-3 pointer-events-none" />
+
+      {/* Layer 6: Radial Vignette */}
+      <div 
+        className="absolute inset-0 z-5 pointer-events-none transition-all duration-300" 
+        style={{
+          background: `radial-gradient(ellipse 90% 90% at 50% 50%, transparent 50%, rgba(4, 2, 10, ${finalVignette / 100}) 100%)`
+        }}
+      />
+    </div>
+  );
+};
+
+const Particles = () => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationFrame;
+
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+
+    const particles = Array.from({ length: 140 }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      size: 0.4 + Math.random() * 2,
+      speed: 0.2 + Math.random() * 0.8,
+      drift: (Math.random() - 0.5) * 0.2,
+      opacity: 0.1 + Math.random() * 0.5,
+      hue: Math.random() > 0.5 ? 280 : 320
+    }));
+
+    const animate = () => {
+      ctx.clearRect(0, 0, w, h);
+      particles.forEach(p => {
+        p.y -= p.speed;
+        p.x += p.drift;
+        if (p.y < -10) {
+          p.y = h + 10;
+          p.x = Math.random() * w;
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.hue}, 70%, 70%, ${p.opacity * (p.y / h)})`;
+        ctx.fill();
+      });
+      animationFrame = requestAnimationFrame(animate);
+    };
+
+    const handleResize = () => {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="fixed inset-0 z-4 pointer-events-none" />;
+};
 
 // Initial Socket connection
 const params = new URLSearchParams(window.location.search);
@@ -65,6 +177,10 @@ export default function RafflePage() {
   const [muted, setMuted] = useState(false);
   const [roomName, setRoomName] = useState("Vibe Sessions Studio");
   const [logoUrl, setLogoUrl] = useState("");
+  const [vignette, setVignette] = useState(25);
+  const [brightness, setBrightness] = useState(115);
+  const [raffleDuration, setRaffleDuration] = useState(5);
+  const [toast, setToast] = useState(null);
 
   // Animation states
   const [spinning, setSpinning] = useState(false);
@@ -79,6 +195,12 @@ export default function RafflePage() {
   const animationFrameId = useRef(null);
   const confettiCanvasRef = useRef(null);
   const confettiParticles = useRef([]);
+  const initiatedDrawRef = useRef(false);
+
+  const showToast = (text, type = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // Load participants & history from server (falls back to local state)
   useEffect(() => {
@@ -88,6 +210,9 @@ export default function RafflePage() {
         const settingsData = await settingsRes.json();
         if (settingsData.businessName) setRoomName(settingsData.businessName);
         if (settingsData.logoUrl) setLogoUrl(settingsData.logoUrl);
+        if (settingsData.vignette !== undefined) setVignette(settingsData.vignette);
+        if (settingsData.brightness !== undefined) setBrightness(settingsData.brightness);
+        if (settingsData.raffleDuration !== undefined) setRaffleDuration(settingsData.raffleDuration);
 
         const raffleRes = await fetch(`/api/raffle?room=${roomID}`);
         const raffleData = await raffleRes.json();
@@ -115,6 +240,14 @@ export default function RafflePage() {
     };
 
     const onRaffleDraw = (data) => {
+      // If we are the initiating client, ignore this broadcast since we already spun!
+      if (initiatedDrawRef.current) {
+        initiatedDrawRef.current = false;
+        if (data.raffle && data.raffle.winners) {
+          setWinners(data.raffle.winners);
+        }
+        return;
+      }
       // Trigger animation sync across devices
       if (data.winner) {
         triggerLocalDraw(data.winner.name);
@@ -154,14 +287,16 @@ export default function RafflePage() {
     return () => cancelAnimationFrame(animationFrameId.current);
   }, [showCelebration]);
 
-  // ── ROULETTE DRAWER ───────────────────────────────────────────────────────────
+
+
+  // ── ROULETTE WHEEL SEGMENT DRAW HELPER ─────────────────────────────────────────
   const drawRouletteWheel = (angle) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const width = 500;
-    const height = 500;
+    const width = 600;
+    const height = 600;
     
     canvas.width = width * dpr;
     canvas.height = height * dpr;
@@ -171,7 +306,7 @@ export default function RafflePage() {
 
     const cx = width / 2;
     const cy = height / 2;
-    const radius = width / 2 - 15;
+    const radius = width / 2 - 20;
     
     ctx.clearRect(0, 0, width, height);
 
@@ -221,7 +356,7 @@ export default function RafflePage() {
       ctx.textBaseline = "middle";
       
       // Dynamic text sizing
-      const fontSize = totalSectors > 24 ? 9 : totalSectors > 12 ? 11 : 13;
+      const fontSize = totalSectors > 24 ? 11 : totalSectors > 12 ? 13 : 16;
       ctx.font = `800 ${fontSize}px 'Syne', sans-serif`;
       ctx.fillStyle = isEven ? '#F8F4FF' : '#F5D193';
       ctx.shadowBlur = 5;
@@ -282,12 +417,12 @@ export default function RafflePage() {
     // The selector is at the top (angle = -Math.PI / 2)
     const targetSectorAngle = -Math.PI / 2 - (winnerIndex * arcSize) - (arcSize / 2);
     
-    // Add multiple full revolutions (between 5 and 8) for kinematic velocity feel
+    // Add multiple full revolutions (between 6 and 8) for kinematic velocity feel
     const fullSpins = 6 + Math.floor(Math.random() * 3);
     const targetAngle = targetSectorAngle - (fullSpins * Math.PI * 2);
 
     let start = null;
-    const duration = 5000; // 5 seconds
+    const duration = raffleDuration * 1000; // Dynamic drawing duration!
     const startAngle = wheelAngle.current;
     
     let lastTickAngle = startAngle;
@@ -337,7 +472,8 @@ export default function RafflePage() {
 
     // Create an elongated reel array containing duplicates of candidates to scroll through
     const baseList = [...participants];
-    const shufflesCount = 55; // Reel length
+    // Scale count of candidates dynamically with the spin duration to keep velocity smooth
+    const shufflesCount = Math.max(30, Math.floor(raffleDuration * 11)); // e.g., 55 items for 5s
     const finalReel = [];
     
     for (let i = 0; i < shufflesCount; i++) {
@@ -352,7 +488,7 @@ export default function RafflePage() {
     setTargetSlotIndex(0);
 
     let currentIdx = 0;
-    const duration = 4500; // 4.5 seconds
+    const duration = raffleDuration * 1000; // Dynamic drawing duration!
     const start = performance.now();
 
     const animateReel = (now) => {
@@ -390,24 +526,29 @@ export default function RafflePage() {
   const drawRaffleWinner = async () => {
     if (spinning || participants.length === 0) return;
     
-    // Select winner randomly from candidate pool
+    // 1. Select winner randomly from candidate pool instantly
     const randWinner = participants[Math.floor(Math.random() * participants.length)];
     
+    // 2. Mark that we initiated this draw to avoid double spinning when socket broadcasts it
+    initiatedDrawRef.current = true;
+
+    // 3. Immediately start local spin animation (zero latency!)
+    triggerLocalDraw(randWinner);
+
+    // 4. Silently dispatch server request in the background
     try {
-      // POST drawn winner to server to persist and broadcast
       const res = await fetch(`/api/raffle/draw?room=${roomID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ winner: randWinner })
       });
       const data = await res.json();
-      if (!data.success) {
-        // offline server fallback
-        triggerLocalDraw(randWinner);
+      if (data.success && data.raffle && data.raffle.winners) {
+        // Smoothly sync the winners list with the official database ID
+        setWinners(data.raffle.winners);
       }
     } catch (e) {
-      // offline fallback
-      triggerLocalDraw(randWinner);
+      console.warn("[Raffle] Failed syncing draw to server in background, local mode active:", e);
     }
   };
 
@@ -431,7 +572,7 @@ export default function RafflePage() {
     ]);
   };
 
-  // ── SAVE PARTICIPANTS LIST ───────────────────────────────────────────────────
+  // ── SAVE PARTICIPANTS & SETTINGS ─────────────────────────────────────────────
   const handleSaveParticipants = async () => {
     const list = inputText
       .split('\n')
@@ -445,13 +586,21 @@ export default function RafflePage() {
 
     setParticipants(list);
     setShowDrawer(false);
-    showToast("Participant list saved!");
+    showToast("Setup updated and saved successfully!");
 
     try {
+      // 1. Save candidates
       await fetch(`/api/raffle/participants?room=${roomID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ participants: list })
+      });
+
+      // 2. Save raffle duration settings
+      await fetch(`/api/settings?room=${roomID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raffleDuration: raffleDuration })
       });
     } catch (err) {
       console.warn("[Raffle] Failed saving to server, local operating active.");
@@ -550,16 +699,30 @@ export default function RafflePage() {
   };
 
   return (
-    <div className="fixed inset-0 bg-[#06030b] text-[#F8F4FF] overflow-hidden select-none font-dm">
+    <div className="fixed inset-0 bg-[#04020a] text-[#F8F4FF] overflow-hidden select-none font-dm">
       
       {/* ── BACKGROUND ESPORTS ATMOSPHERE ── */}
-      <div className="absolute inset-0 pointer-events-none z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(139,92,246,0.18)_0%,rgba(6,3,11,0.95)_75%)]" />
-        <div className="absolute inset-0 opacity-10 bg-[linear-gradient(rgba(217,70,239,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(217,70,239,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
-        {/* Floating Esports particles */}
-        <div className="absolute top-[20%] left-[15%] w-96 h-96 rounded-full bg-[#8B5CF6]/10 blur-[150px] animate-[pulse_6s_infinite]" />
-        <div className="absolute bottom-[20%] right-[15%] w-[480px] h-[480px] rounded-full bg-[#D946EF]/8 blur-[180px] animate-[pulse_9s_infinite]" />
-      </div>
+      <Atmo vignette={vignette} brightness={brightness} />
+      <Particles />
+
+      {/* Toast Notifications */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={`fixed top-6 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3.5 rounded-2xl border shadow-xl flex items-center gap-3 font-dm text-sm backdrop-blur-2xl ${
+              toast.type === 'success' 
+                ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400' 
+                : 'bg-red-950/80 border-red-500/30 text-red-400'
+            }`}
+          >
+            {toast.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
+            {toast.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <canvas ref={confettiCanvasRef} className="absolute inset-0 pointer-events-none z-50" />
 
@@ -629,31 +792,31 @@ export default function RafflePage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
-                className="flex flex-col items-center gap-8 w-full max-w-xl"
+                className="flex flex-col items-center gap-8 w-full max-w-2xl"
               >
                 {/* 3D Glass Slot Cylinder */}
-                <div className="relative w-full h-44 rounded-[2rem] border-2 border-[#F5D193]/35 bg-gradient-to-b from-[#110725]/90 via-[#070311]/97 to-[#110725]/90 p-1 shadow-[0_30px_90px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden">
+                <div className="relative w-full h-[240px] rounded-[2rem] border-2 border-[#F5D193]/35 bg-gradient-to-b from-[#110725]/90 via-[#070311]/97 to-[#110725]/90 p-1 shadow-[0_30px_90px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden">
                   
                   {/* Top/Bottom shadow shading covers */}
-                  <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-[#06030b] to-transparent z-10 pointer-events-none" />
-                  <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#06030b] to-transparent z-10 pointer-events-none" />
+                  <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#04020a] to-transparent z-10 pointer-events-none" />
+                  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#04020a] to-transparent z-10 pointer-events-none" />
 
                   {/* Horizontal Alignment Guides */}
                   <div className="absolute inset-y-0 left-6 right-6 flex items-center justify-between pointer-events-none z-10">
-                    <div className="w-1.5 h-16 rounded-full bg-[#F5D193] shadow-[0_0_15px_#F5D193]" />
-                    <div className="w-1.5 h-16 rounded-full bg-[#F5D193] shadow-[0_0_15px_#F5D193]" />
+                    <div className="w-1.5 h-20 rounded-full bg-[#F5D193] shadow-[0_0_15px_#F5D193]" />
+                    <div className="w-1.5 h-20 rounded-full bg-[#F5D193] shadow-[0_0_15px_#F5D193]" />
                   </div>
 
                   {/* Golden Center Target Frame */}
-                  <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-20 rounded-2xl bg-[#F5D193]/[0.02] border border-[#F5D193]/30 pointer-events-none z-10 shadow-[inset_0_0_30px_rgba(245,209,147,0.1),0_0_40px_rgba(0,0,0,0.6)]" />
+                  <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 h-[104px] rounded-2xl bg-[#F5D193]/[0.02] border border-[#F5D193]/30 pointer-events-none z-10 shadow-[inset_0_0_30px_rgba(245,209,147,0.1),0_0_40px_rgba(0,0,0,0.6)]" />
 
                   {/* Dynamic scrolling content strip */}
                   <div 
                     className="w-full flex flex-col items-center transition-transform duration-[40ms] ease-out"
-                    style={{ transform: `translateY(calc(-${targetSlotIndex * 80}px + 44px))` }}
+                    style={{ transform: `translateY(calc(-${targetSlotIndex * 100}px + 70px))` }}
                   >
                     {slotItems.length === 0 ? (
-                      <div className="h-20 flex items-center justify-center font-syne text-xl text-white/20 uppercase tracking-widest">
+                      <div className="h-[240px] flex items-center justify-center font-syne text-2xl text-white/20 uppercase tracking-widest">
                         PULL LEVER TO DRAW
                       </div>
                     ) : (
@@ -662,16 +825,16 @@ export default function RafflePage() {
                         return (
                           <div 
                             key={idx} 
-                            style={{ height: '80px' }} 
+                            style={{ height: '100px' }} 
                             className="flex items-center justify-center shrink-0 w-full"
                           >
                             <span 
                               className={`font-syne uppercase tracking-widest text-center truncate px-8 transition-all ${
                                 isWinner 
-                                  ? 'text-[36px] font-black text-transparent bg-clip-text bg-gradient-to-b from-[#FFF] to-[#F5D193] drop-shadow-[0_0_20px_rgba(245,209,147,0.6)] scale-110' 
+                                  ? 'text-[48px] font-black text-transparent bg-clip-text bg-gradient-to-b from-[#FFF] to-[#F5D193] drop-shadow-[0_0_20px_rgba(245,209,147,0.6)] scale-110' 
                                   : spinning 
-                                    ? 'text-[24px] font-bold text-white/10 blur-[2px]' 
-                                    : 'text-[26px] font-bold text-white/20'
+                                    ? 'text-[30px] font-bold text-white/10 blur-[2px]' 
+                                    : 'text-[32px] font-bold text-white/20'
                               }`}
                             >
                               {item}
@@ -693,11 +856,11 @@ export default function RafflePage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
-                className="relative w-[500px] h-[500px] flex items-center justify-center"
+                className="relative w-[600px] h-[600px] flex items-center justify-center"
               >
                 {/* Pointer arrow at the top */}
-                <div className="absolute top-[-10px] left-1/2 -translate-x-1/2 z-30 pointer-events-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.8)] filter">
-                  <div className="w-0 h-0 border-l-[18px] border-l-transparent border-r-[18px] border-r-transparent border-t-[34px] border-t-[#F5D193] filter drop-shadow-[0_0_10px_rgba(245,209,147,0.7)]" />
+                <div className="absolute top-[-15px] left-1/2 -translate-x-1/2 z-30 pointer-events-none drop-shadow-[0_8px_20px_rgba(0,0,0,0.8)] filter">
+                  <div className="w-0 h-0 border-l-[22px] border-l-transparent border-r-[22px] border-r-transparent border-t-[40px] border-t-[#F5D193] filter drop-shadow-[0_0_12px_rgba(245,209,147,0.85)]" />
                 </div>
 
                 {/* Rotating Canvas */}
@@ -853,6 +1016,23 @@ export default function RafflePage() {
                   <p className="text-[9px] text-white/20 italic">Type or paste candidate names. Empty entries will be skipped automatically.</p>
                 </div>
 
+                {/* Spin Duration Slider */}
+                <div className="space-y-2.5">
+                  <label className="flex items-center justify-between text-[11px] font-syne font-bold uppercase tracking-widest text-white/50">
+                    <span>Spin Duration</span>
+                    <span className="text-[10px] font-mono text-[#F5D193]">{raffleDuration} Seconds</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="3"
+                    max="15"
+                    value={raffleDuration}
+                    onChange={(e) => setRaffleDuration(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#D946EF]"
+                  />
+                  <p className="text-[9px] text-white/20 italic">Control how long the wheel or slot machine cylinder rotates before selecting the winner.</p>
+                </div>
+
                 <div className="flex gap-4 pt-2">
                   <button
                     onClick={() => {
@@ -866,7 +1046,7 @@ export default function RafflePage() {
                     onClick={handleSaveParticipants}
                     className="flex-1 py-4 bg-gradient-to-r from-[#8B5CF6] to-[#D946EF] rounded-2xl font-syne font-bold text-[9px] uppercase tracking-wider text-white hover:shadow-[0_0_30px_rgba(217,70,239,0.3)] border border-white/10 transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
-                    <Check size={12} /> Sync & Save Candidates
+                    <Check size={12} /> Sync & Save Raffle
                   </button>
                 </div>
 
@@ -907,44 +1087,44 @@ export default function RafflePage() {
               exit={{ scale: 0.85, y: 50, rotateX: -30 }}
               transition={{ type: 'spring', damping: 20, stiffness: 180, mass: 1 }}
               style={{ transformStyle: 'preserve-3d', perspective: '1000px' }}
-              className="relative w-full max-w-[500px] bg-gradient-to-br from-[#1b1030] to-[#070311] border-2 border-[#F5D193] rounded-[3rem] p-10 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8),0_0_80px_rgba(245,209,147,0.25)] flex flex-col items-center gap-6"
+              className="relative w-full max-w-[620px] bg-gradient-to-br from-[#1b1030] to-[#070311] border-2 border-[#F5D193] rounded-[3rem] p-12 text-center shadow-[0_30px_90px_rgba(0,0,0,0.8),0_0_80px_rgba(245,209,147,0.25)] flex flex-col items-center gap-8"
             >
               {/* Gold Ribbon Emblem */}
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#F5D193] to-[#b38f4d] flex items-center justify-center text-4xl border border-white/20 shadow-2xl shadow-[#F5D193]/30">
+              <div className="w-28 h-28 rounded-full bg-gradient-to-br from-[#F5D193] to-[#b38f4d] flex items-center justify-center text-5xl border border-white/20 shadow-2xl shadow-[#F5D193]/30">
                 🏆
               </div>
 
-              <div className="space-y-1.5 mt-2">
-                <span className="font-syne text-[10px] font-extrabold uppercase tracking-[0.45em] text-[#F5D193] animate-pulse">Congratulations</span>
-                <h2 className="LuxeFont text-5xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] leading-tight">We Have A Winner</h2>
+              <div className="space-y-2 mt-2">
+                <span className="font-syne text-[11px] font-extrabold uppercase tracking-[0.45em] text-[#F5D193] animate-pulse">Congratulations</span>
+                <h2 className="LuxeFont text-6xl text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] leading-tight">We Have A Winner</h2>
               </div>
 
               {/* Gold divider line */}
-              <div className="w-32 h-[2px] bg-gradient-to-r from-transparent via-[#F5D193] to-transparent shadow-[0_0_15px_rgba(245,209,147,0.7)]" />
+              <div className="w-40 h-[2px] bg-gradient-to-r from-transparent via-[#F5D193] to-transparent shadow-[0_0_15px_rgba(245,209,147,0.7)]" />
 
               {/* Sparkle effects around name */}
               <div className="relative py-4 w-full">
-                <h1 className="font-syne font-black text-6xl text-transparent bg-clip-text bg-gradient-to-b from-[#FFF] via-[#FFF] to-[#F5D193] filter drop-shadow-[0_0_25px_rgba(245,209,147,0.75)] uppercase tracking-widest line-clamp-2 px-4 leading-none">
+                <h1 className="font-syne font-black text-7xl text-transparent bg-clip-text bg-gradient-to-b from-[#FFF] via-[#FFF] to-[#F5D193] filter drop-shadow-[0_0_25px_rgba(245,209,147,0.75)] uppercase tracking-widest line-clamp-2 px-4 leading-none animate-[pulse_4s_infinite]">
                   {winner}
                 </h1>
               </div>
 
               <div className="w-full pt-4">
                 <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => setShowCelebration(false)}
-                  className="w-full py-4.5 rounded-2xl bg-gradient-to-r from-[#F5D193] to-[#b38f4d] text-[#06030b] font-syne font-extrabold uppercase tracking-widest text-xs border border-white/25 shadow-xl transition-all shadow-[#F5D193]/15 flex items-center justify-center gap-2"
+                  className="w-full py-5 rounded-2xl bg-gradient-to-r from-[#F5D193] to-[#b38f4d] text-[#06030b] font-syne font-extrabold uppercase tracking-widest text-xs border border-white/25 shadow-xl transition-all shadow-[#F5D193]/15 flex items-center justify-center gap-2"
                 >
-                  <Award size={14} /> Claim Reward & Continue
+                  <Award size={15} /> Claim Reward & Continue
                 </motion.button>
               </div>
 
               {/* L-Brackets decorative corners */}
-              <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-[#F5D193]/35 rounded-tl-lg" />
-              <div className="absolute top-8 right-8 w-8 h-8 border-t-2 border-r-2 border-[#F5D193]/35 rounded-tr-lg" />
-              <div className="absolute bottom-8 left-8 w-8 h-8 border-b-2 border-l-2 border-[#F5D193]/35 rounded-bl-lg" />
-              <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-[#F5D193]/35 rounded-br-lg" />
+              <div className="absolute top-8 left-8 w-10 h-10 border-t-2 border-l-2 border-[#F5D193]/35 rounded-tl-lg" />
+              <div className="absolute top-8 right-8 w-10 h-10 border-t-2 border-r-2 border-[#F5D193]/35 rounded-tr-lg" />
+              <div className="absolute bottom-8 left-8 w-10 h-10 border-b-2 border-l-2 border-[#F5D193]/35 rounded-bl-lg" />
+              <div className="absolute bottom-8 right-8 w-10 h-10 border-b-2 border-r-2 border-[#F5D193]/35 rounded-br-lg" />
             </motion.div>
           </motion.div>
         )}

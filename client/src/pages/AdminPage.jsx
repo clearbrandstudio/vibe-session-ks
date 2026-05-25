@@ -70,7 +70,9 @@ export default function AdminPage() {
     logoPosition: 'top-left',
     logoScale: 100,
     logoOnTransition: true,
-    promoScale: 100
+    promoScale: 100,
+    // Raffle settings
+    raffleDuration: 5
   });
 
   // Feature Lists
@@ -125,7 +127,9 @@ export default function AdminPage() {
           logoPosition: settingsData.logoPosition || 'top-left',
           logoScale: settingsData.logoScale !== undefined ? settingsData.logoScale : 100,
           logoOnTransition: settingsData.logoOnTransition !== undefined ? settingsData.logoOnTransition : true,
-          promoScale: settingsData.promoScale !== undefined ? settingsData.promoScale : 100
+          promoScale: settingsData.promoScale !== undefined ? settingsData.promoScale : 100,
+          // Raffle
+          raffleDuration: settingsData.raffleDuration !== undefined ? settingsData.raffleDuration : 5
         });
 
         const promosRes = await fetch(`/api/promos?room=${roomID}`);
@@ -185,7 +189,9 @@ export default function AdminPage() {
         logoPosition: settings.logoPosition,
         logoScale: settings.logoScale,
         logoOnTransition: settings.logoOnTransition,
-        promoScale: settings.promoScale
+        promoScale: settings.promoScale,
+        // Raffle
+        raffleDuration: settings.raffleDuration
       };
       if (settings.youtubeApiKeyInput && settings.youtubeApiKeyInput.trim().length > 5) {
         payload.youtubeApiKey = settings.youtubeApiKeyInput.trim();

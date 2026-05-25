@@ -271,7 +271,9 @@ app.get('/api/settings', (req, res) => {
       logoPosition: 'top-left',
       logoScale: 100,
       logoOnTransition: true,
-      promoScale: 100
+      promoScale: 100,
+      // Raffle Settings
+      raffleDuration: 5
     };
     
     if (!fs.existsSync(settingsPath)) {
@@ -345,7 +347,9 @@ app.post('/api/settings', (req, res) => {
       logoPosition,
       logoScale,
       logoOnTransition,
-      promoScale
+      promoScale,
+      // Raffle
+      raffleDuration
     } = req.body;
     
     const settingsPath = path.join(__dirname, 'settings.json');
@@ -391,7 +395,9 @@ app.post('/api/settings', (req, res) => {
       logoPosition: logoPosition !== undefined ? logoPosition : (prev.logoPosition || 'top-left'),
       logoScale: logoScale !== undefined ? parseInt(logoScale) : (prev.logoScale !== undefined ? parseInt(prev.logoScale) : 100),
       logoOnTransition: logoOnTransition !== undefined ? !!logoOnTransition : (prev.logoOnTransition !== undefined ? !!prev.logoOnTransition : true),
-      promoScale: promoScale !== undefined ? parseInt(promoScale) : (prev.promoScale !== undefined ? parseInt(prev.promoScale) : 100)
+      promoScale: promoScale !== undefined ? parseInt(promoScale) : (prev.promoScale !== undefined ? parseInt(prev.promoScale) : 100),
+      // Raffle
+      raffleDuration: raffleDuration !== undefined ? parseInt(raffleDuration) : (prev.raffleDuration !== undefined ? parseInt(prev.raffleDuration) : 5)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
