@@ -179,7 +179,7 @@ export default function RafflePage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [vignette, setVignette] = useState(25);
   const [brightness, setBrightness] = useState(115);
-  const [raffleDuration, setRaffleDuration] = useState(5);
+  const [raffleDuration, setRaffleDuration] = useState(10);
   const [toast, setToast] = useState(null);
 
   // Animation states
@@ -359,8 +359,6 @@ export default function RafflePage() {
       const fontSize = totalSectors > 24 ? 11 : totalSectors > 12 ? 13 : 16;
       ctx.font = `800 ${fontSize}px 'Syne', sans-serif`;
       ctx.fillStyle = isEven ? '#F8F4FF' : '#F5D193';
-      ctx.shadowBlur = 5;
-      ctx.shadowColor = isEven ? 'rgba(217,70,239,0.3)' : 'rgba(245,209,147,0.3)';
       
       // Truncate name if too long
       const displayName = name.length > 15 ? name.substring(0, 13) + '..' : name;
@@ -661,7 +659,15 @@ export default function RafflePage() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    confettiParticles.current.forEach((p, i) => {
+    // Keep and update only active particles that remain inside visible boundaries
+    // This garbage-collection technique yields massive performance speedups!
+    const activeParticles = confettiParticles.current.filter(p => 
+      p.y < canvas.height + 20 && 
+      p.x > -20 && 
+      p.x < canvas.width + 20
+    );
+
+    activeParticles.forEach((p) => {
       p.x += p.vx;
       p.y += p.vy;
       p.vy += p.gravity;
@@ -672,9 +678,6 @@ export default function RafflePage() {
       ctx.translate(p.x, p.y);
       ctx.rotate((p.rotation * Math.PI) / 180);
       ctx.fillStyle = p.color;
-
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = p.color;
 
       if (p.type === 'circle') {
         ctx.beginPath();
@@ -696,6 +699,8 @@ export default function RafflePage() {
       }
       ctx.restore();
     });
+
+    confettiParticles.current = activeParticles;
   };
 
   return (

@@ -273,7 +273,7 @@ app.get('/api/settings', (req, res) => {
       logoOnTransition: true,
       promoScale: 100,
       // Raffle Settings
-      raffleDuration: 5
+      raffleDuration: 10
     };
     
     if (!fs.existsSync(settingsPath)) {
@@ -397,7 +397,7 @@ app.post('/api/settings', (req, res) => {
       logoOnTransition: logoOnTransition !== undefined ? !!logoOnTransition : (prev.logoOnTransition !== undefined ? !!prev.logoOnTransition : true),
       promoScale: promoScale !== undefined ? parseInt(promoScale) : (prev.promoScale !== undefined ? parseInt(prev.promoScale) : 100),
       // Raffle
-      raffleDuration: raffleDuration !== undefined ? parseInt(raffleDuration) : (prev.raffleDuration !== undefined ? parseInt(prev.raffleDuration) : 5)
+      raffleDuration: raffleDuration !== undefined ? parseInt(raffleDuration) : (prev.raffleDuration !== undefined ? parseInt(prev.raffleDuration) : 10)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));

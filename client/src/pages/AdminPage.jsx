@@ -72,7 +72,7 @@ export default function AdminPage() {
     logoOnTransition: true,
     promoScale: 100,
     // Raffle settings
-    raffleDuration: 5
+    raffleDuration: 10
   });
 
   // Feature Lists
@@ -129,7 +129,7 @@ export default function AdminPage() {
           logoOnTransition: settingsData.logoOnTransition !== undefined ? settingsData.logoOnTransition : true,
           promoScale: settingsData.promoScale !== undefined ? settingsData.promoScale : 100,
           // Raffle
-          raffleDuration: settingsData.raffleDuration !== undefined ? settingsData.raffleDuration : 5
+          raffleDuration: settingsData.raffleDuration !== undefined ? settingsData.raffleDuration : 10
         });
 
         const promosRes = await fetch(`/api/promos?room=${roomID}`);
