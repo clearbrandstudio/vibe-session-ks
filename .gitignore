@@ -26,6 +26,10 @@ Thumbs.db
 # Temporary / Backups
 client_backup/
 
+# Runtime data files with sensitive content (passwords, sessions, API keys)
+# These are generated at runtime on the server — never commit them
+tenants.json
+
 # IDE / Editors
 .vscode/
 .idea/

@@ -56,7 +56,14 @@ export default function AdminPage() {
     promoGap: 60,
     // Ticker timing
     tickerMode: 'intro',
-    tickerDuration: 30
+    tickerDuration: 30,
+    // Brand / Outro
+    youtubeHandle: '',
+    outroDuration: 7,
+    // LED Stage Readability Scale
+    tickerScale: 100,
+    queueNameScale: 100,
+    hudCardScale: 100
   });
 
   // Feature Lists
@@ -97,7 +104,14 @@ export default function AdminPage() {
           promoGap: settingsData.promoGap !== undefined ? settingsData.promoGap : 60,
           // Ticker timing
           tickerMode: settingsData.tickerMode || 'intro',
-          tickerDuration: settingsData.tickerDuration !== undefined ? settingsData.tickerDuration : 30
+          tickerDuration: settingsData.tickerDuration !== undefined ? settingsData.tickerDuration : 30,
+          // Brand / Outro
+          youtubeHandle: settingsData.youtubeHandle || '',
+          outroDuration: settingsData.outroDuration !== undefined ? settingsData.outroDuration : 7,
+          // LED Scale
+          tickerScale: settingsData.tickerScale !== undefined ? settingsData.tickerScale : 100,
+          queueNameScale: settingsData.queueNameScale !== undefined ? settingsData.queueNameScale : 100,
+          hudCardScale: settingsData.hudCardScale !== undefined ? settingsData.hudCardScale : 100
         });
 
         const promosRes = await fetch(`/api/promos?room=${roomID}`);
@@ -144,7 +158,14 @@ export default function AdminPage() {
         promoGap: settings.promoGap,
         // Ticker timing
         tickerMode: settings.tickerMode,
-        tickerDuration: settings.tickerDuration
+        tickerDuration: settings.tickerDuration,
+        // Brand / Outro
+        youtubeHandle: settings.youtubeHandle,
+        outroDuration: settings.outroDuration,
+        // LED Scale
+        tickerScale: settings.tickerScale,
+        queueNameScale: settings.queueNameScale,
+        hudCardScale: settings.hudCardScale
       };
       if (settings.youtubeApiKeyInput && settings.youtubeApiKeyInput.trim().length > 5) {
         payload.youtubeApiKey = settings.youtubeApiKeyInput.trim();
@@ -573,6 +594,14 @@ export default function AdminPage() {
                     onChange={(val) => setSettings(s => ({ ...s, businessName: val }))}
                   />
 
+                  <InputField
+                    label="YouTube Channel Handle"
+                    placeholder="e.g. @vibesessionsstudio"
+                    icon={Tv}
+                    value={settings.youtubeHandle}
+                    onChange={(val) => setSettings(s => ({ ...s, youtubeHandle: val }))}
+                  />
+
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-[11px] font-syne font-bold uppercase tracking-widest text-white/50">
                       <Clock size={13} className="text-[#8B5CF6]" />
@@ -695,6 +724,74 @@ export default function AdminPage() {
                     ))}
                   </div>
                   <p className="text-[9px] text-white/30 italic">Selecting a preset applies and saves immediately to stage displays.</p>
+                </div>
+
+                {/* ── LED STAGE READABILITY ─────────────────────────────── */}
+                <div className="space-y-5 pt-4 border-t border-white/5">
+                  <div>
+                    <h3 className="font-syne text-[11px] font-extrabold uppercase tracking-wider text-[#D946EF] flex items-center gap-2 mb-1">
+                      📺 LED Stage Readability
+                    </h3>
+                    <p className="font-dm text-[10px] text-white/30 leading-relaxed">
+                      Scale up text elements for large LED TVs or stage screens. 100% = default. Increase for readability at distance.
+                    </p>
+                  </div>
+
+                  {/* Ticker Scale */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-dm">
+                      <span className="font-bold text-white/70">Scrolling Ticker Text Size</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{settings.tickerScale}%</span>
+                    </div>
+                    <input type="range" min="75" max="250" step="5"
+                      className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                      value={settings.tickerScale}
+                      onChange={(e) => setSettings(s => ({ ...s, tickerScale: parseInt(e.target.value) }))}
+                    />
+                    <p className="text-[9px] text-white/25">Controls the scrolling marquee text at the bottom. Go 150–200% for large TVs.</p>
+                  </div>
+
+                  {/* Queue Name Scale */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-dm">
+                      <span className="font-bold text-white/70">Singer Name / NP Bar Text Size</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{settings.queueNameScale}%</span>
+                    </div>
+                    <input type="range" min="75" max="250" step="5"
+                      className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                      value={settings.queueNameScale}
+                      onChange={(e) => setSettings(s => ({ ...s, queueNameScale: parseInt(e.target.value) }))}
+                    />
+                    <p className="text-[9px] text-white/25">Affects the "Now Playing" bar and singer name pill at top-right.</p>
+                  </div>
+
+                  {/* HUD Card Scale */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-dm">
+                      <span className="font-bold text-white/70">"Now Performing" Card Scale</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{settings.hudCardScale}%</span>
+                    </div>
+                    <input type="range" min="75" max="200" step="5"
+                      className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                      value={settings.hudCardScale}
+                      onChange={(e) => setSettings(s => ({ ...s, hudCardScale: parseInt(e.target.value) }))}
+                    />
+                    <p className="text-[9px] text-white/25">The intro glass card showing singer name + song title at song start.</p>
+                  </div>
+
+                  {/* Outro Duration */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-dm">
+                      <span className="font-bold text-white/70">Outro Promo Trigger (sec before end)</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{settings.outroDuration}s</span>
+                    </div>
+                    <input type="range" min="5" max="15" step="1"
+                      className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                      value={settings.outroDuration}
+                      onChange={(e) => setSettings(s => ({ ...s, outroDuration: parseInt(e.target.value) }))}
+                    />
+                    <p className="text-[9px] text-white/25">How many seconds before the song ends to show the promo collage outro.</p>
+                  </div>
                 </div>
 
                 <div className="space-y-6 pt-4 border-t border-white/5">

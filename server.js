@@ -251,7 +251,14 @@ app.get('/api/settings', (req, res) => {
       promoGap: 60,                    // seconds between promo appearances
       // Ticker (rolling text) timing defaults
       tickerMode: 'intro',             // intro | both | always | off
-      tickerDuration: 30               // seconds ticker shows at song start
+      tickerDuration: 30,              // seconds ticker shows at song start
+      // Brand / Outro
+      youtubeHandle: '',               // e.g. @vibesessionsstudio
+      outroDuration: 7,                // seconds before song end to show outro collage
+      // LED Stage Readability Scale (percentage, 100 = normal)
+      tickerScale: 100,
+      queueNameScale: 100,
+      hudCardScale: 100
     };
     
     if (!fs.existsSync(settingsPath)) {
@@ -312,7 +319,14 @@ app.post('/api/settings', (req, res) => {
       promoGap,
       // Ticker timing
       tickerMode,
-      tickerDuration
+      tickerDuration,
+      // Brand / Outro
+      youtubeHandle,
+      outroDuration,
+      // LED Scale
+      tickerScale,
+      queueNameScale,
+      hudCardScale
     } = req.body;
     
     const settingsPath = path.join(__dirname, 'settings.json');
@@ -345,7 +359,14 @@ app.post('/api/settings', (req, res) => {
       promoGap: promoGap !== undefined ? parseInt(promoGap) : (prev.promoGap !== undefined ? parseInt(prev.promoGap) : 60),
       // Ticker timing
       tickerMode: tickerMode || prev.tickerMode || 'intro',
-      tickerDuration: tickerDuration !== undefined ? parseInt(tickerDuration) : (prev.tickerDuration !== undefined ? parseInt(prev.tickerDuration) : 30)
+      tickerDuration: tickerDuration !== undefined ? parseInt(tickerDuration) : (prev.tickerDuration !== undefined ? parseInt(prev.tickerDuration) : 30),
+      // Brand / Outro
+      youtubeHandle: youtubeHandle !== undefined ? youtubeHandle : (prev.youtubeHandle || ''),
+      outroDuration: outroDuration !== undefined ? parseInt(outroDuration) : (prev.outroDuration !== undefined ? parseInt(prev.outroDuration) : 7),
+      // LED Scale
+      tickerScale: tickerScale !== undefined ? parseInt(tickerScale) : (prev.tickerScale !== undefined ? parseInt(prev.tickerScale) : 100),
+      queueNameScale: queueNameScale !== undefined ? parseInt(queueNameScale) : (prev.queueNameScale !== undefined ? parseInt(prev.queueNameScale) : 100),
+      hudCardScale: hudCardScale !== undefined ? parseInt(hudCardScale) : (prev.hudCardScale !== undefined ? parseInt(prev.hudCardScale) : 100)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
@@ -803,6 +824,211 @@ app.post('/api/queue/update-current-video', (req, res) => {
   res.json({ success: true, currentSong: room.currentSong });
 });
 
+
+// ──────────────────────────────────────────────
+// Auth & Tenant Management (SaaS)
+// ──────────────────────────────────────────────
+const crypto = require('crypto');
+const SUPER_ADMIN_KEY = process.env.SUPER_ADMIN_KEY || 'vibe-super-2025';
+
+function hashPassword(password, salt) {
+  const s = salt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.createHmac('sha256', s).update(password).digest('hex');
+  return { hash, salt: s };
+}
+
+function getTenantsData() {
+  const tenantsPath = path.join(__dirname, 'tenants.json');
+  if (!fs.existsSync(tenantsPath)) {
+    // Create default with owner room
+    const defaultData = { sessions: {}, rooms: {} };
+    fs.writeFileSync(tenantsPath, JSON.stringify(defaultData, null, 2));
+    return defaultData;
+  }
+  return JSON.parse(fs.readFileSync(tenantsPath, 'utf8'));
+}
+
+function saveTenantsData(data) {
+  fs.writeFileSync(path.join(__dirname, 'tenants.json'), JSON.stringify(data, null, 2));
+}
+
+function isTenantActive(roomID) {
+  const data = getTenantsData();
+  const tenant = data.rooms && data.rooms[roomID];
+  if (!tenant) return true; // no auth config = open (backward compat)
+  if (!tenant.active) return false;
+  if (tenant.expiresAt && new Date(tenant.expiresAt) < new Date()) return false;
+  return true;
+}
+
+function isAuthenticated(req) {
+  const token = req.headers['x-session-token'] || req.query.token;
+  if (!token) return false;
+  const data = getTenantsData();
+  const session = data.sessions && data.sessions[token];
+  if (!session) return false;
+  if (session.expiresAt && new Date(session.expiresAt) < new Date()) return false;
+  return session.roomID;
+}
+
+// Auth middleware for admin-only routes
+function requireAuth(req, res, next) {
+  const roomID = req.query.room || req.body?.room || 'default';
+  const data = getTenantsData();
+  // If room has no tenant config, allow open access (backward compat)
+  if (!data.rooms || !data.rooms[roomID]) return next();
+  const authedRoom = isAuthenticated(req);
+  if (!authedRoom || authedRoom !== roomID) {
+    return res.status(401).json({ error: 'Unauthorized. Please login.', requireLogin: true });
+  }
+  if (!isTenantActive(roomID)) {
+    return res.status(403).json({ error: 'Subscription expired or suspended.', suspended: true });
+  }
+  next();
+}
+
+// ── POST /api/auth/login
+app.post('/api/auth/login', (req, res) => {
+  const { roomID, password } = req.body;
+  if (!roomID || !password) return res.status(400).json({ error: 'roomID and password required' });
+  
+  const data = getTenantsData();
+  const tenant = data.rooms && data.rooms[roomID];
+  if (!tenant) return res.status(404).json({ error: 'Room not found' });
+  if (!tenant.active) return res.status(403).json({ error: 'Subscription suspended. Please contact support.' });
+  if (tenant.expiresAt && new Date(tenant.expiresAt) < new Date()) {
+    return res.status(403).json({ error: 'Subscription expired. Please renew.' });
+  }
+  
+  const { hash } = hashPassword(password, tenant.passwordSalt);
+  if (hash !== tenant.passwordHash) return res.status(401).json({ error: 'Invalid password' });
+  
+  // Create session token
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+  if (!data.sessions) data.sessions = {};
+  data.sessions[token] = { roomID, expiresAt, createdAt: new Date().toISOString() };
+  // Update last login
+  data.rooms[roomID].lastLoginAt = new Date().toISOString();
+  saveTenantsData(data);
+  
+  res.json({ success: true, token, roomID, expiresAt, businessName: tenant.businessName });
+});
+
+// ── POST /api/auth/logout
+app.post('/api/auth/logout', (req, res) => {
+  const token = req.headers['x-session-token'] || req.body.token;
+  if (token) {
+    const data = getTenantsData();
+    if (data.sessions) delete data.sessions[token];
+    saveTenantsData(data);
+  }
+  res.json({ success: true });
+});
+
+// ── GET /api/auth/status
+app.get('/api/auth/status', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const data = getTenantsData();
+  const tenant = data.rooms && data.rooms[roomID];
+  if (!tenant) return res.json({ requiresAuth: false });
+  const authedRoom = isAuthenticated(req);
+  res.json({
+    requiresAuth: true,
+    authenticated: authedRoom === roomID,
+    active: tenant.active,
+    businessName: tenant.businessName,
+    expiresAt: tenant.expiresAt || null
+  });
+});
+
+// ── Super Admin: List all tenants
+app.get('/api/superadmin/tenants', (req, res) => {
+  const masterKey = req.headers['x-super-admin-key'];
+  if (masterKey !== SUPER_ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+  const data = getTenantsData();
+  const rooms = data.rooms || {};
+  // Strip sensitive fields
+  const sanitized = Object.entries(rooms).map(([id, t]) => ({
+    roomID: id,
+    businessName: t.businessName,
+    active: t.active,
+    plan: t.plan || 'basic',
+    expiresAt: t.expiresAt,
+    lastLoginAt: t.lastLoginAt,
+    createdAt: t.createdAt
+  }));
+  res.json({ tenants: sanitized });
+});
+
+// ── Super Admin: Create or update tenant
+app.post('/api/superadmin/tenants', (req, res) => {
+  const masterKey = req.headers['x-super-admin-key'];
+  if (masterKey !== SUPER_ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+  const { roomID, businessName, password, active, plan, expiresAt } = req.body;
+  if (!roomID || !businessName) return res.status(400).json({ error: 'roomID and businessName required' });
+  
+  const data = getTenantsData();
+  if (!data.rooms) data.rooms = {};
+  const existing = data.rooms[roomID] || {};
+  
+  const update = {
+    ...existing,
+    businessName,
+    active: active !== undefined ? active : (existing.active !== undefined ? existing.active : true),
+    plan: plan || existing.plan || 'basic',
+    expiresAt: expiresAt || existing.expiresAt || null,
+    createdAt: existing.createdAt || new Date().toISOString()
+  };
+  
+  // Only update password if provided
+  if (password && password.trim().length >= 6) {
+    const { hash, salt } = hashPassword(password);
+    update.passwordHash = hash;
+    update.passwordSalt = salt;
+  } else if (!existing.passwordHash && !password) {
+    return res.status(400).json({ error: 'Password required for new tenant' });
+  }
+  
+  data.rooms[roomID] = update;
+  saveTenantsData(data);
+  
+  res.json({ success: true, roomID, businessName });
+});
+
+// ── Super Admin: Toggle tenant active status
+app.patch('/api/superadmin/tenants/:roomID', (req, res) => {
+  const masterKey = req.headers['x-super-admin-key'];
+  if (masterKey !== SUPER_ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+  const { roomID } = req.params;
+  const { active, expiresAt, plan } = req.body;
+  
+  const data = getTenantsData();
+  if (!data.rooms || !data.rooms[roomID]) return res.status(404).json({ error: 'Tenant not found' });
+  if (active !== undefined) data.rooms[roomID].active = active;
+  if (expiresAt !== undefined) data.rooms[roomID].expiresAt = expiresAt;
+  if (plan !== undefined) data.rooms[roomID].plan = plan;
+  saveTenantsData(data);
+  
+  res.json({ success: true });
+});
+
+// ── Super Admin: Delete tenant
+app.delete('/api/superadmin/tenants/:roomID', (req, res) => {
+  const masterKey = req.headers['x-super-admin-key'];
+  if (masterKey !== SUPER_ADMIN_KEY) return res.status(403).json({ error: 'Forbidden' });
+  const { roomID } = req.params;
+  const data = getTenantsData();
+  if (data.rooms) delete data.rooms[roomID];
+  // Clean up sessions for this room
+  if (data.sessions) {
+    Object.keys(data.sessions).forEach(tok => {
+      if (data.sessions[tok].roomID === roomID) delete data.sessions[tok];
+    });
+  }
+  saveTenantsData(data);
+  res.json({ success: true });
+});
 
 // ──────────────────────────────────────────────
 // Socket.io

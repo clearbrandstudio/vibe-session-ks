@@ -476,7 +476,8 @@ const Countdown = ({ current, onComplete }) => {
   );
 };
 
-const NPBar = ({ current, queue = [] }) => {
+const NPBar = ({ current, queue = [], settings }) => {
+  const nameScale = (settings?.queueNameScale ?? 100) / 100;
   return (
     <div className="fixed bottom-0 left-0 w-full z-20 bg-gradient-to-t from-[#040210/98] via-[#040210/70] to-transparent p-4 px-8 flex items-center gap-6 pointer-events-none">
        <div className="flex gap-1 h-4 items-end">
@@ -493,21 +494,21 @@ const NPBar = ({ current, queue = [] }) => {
        <div className="w-[1px] h-6 bg-[#8b5cf6]/20" />
        
        <div className="flex-1 min-w-0">
-          <span className="block font-dm text-[11px] text-[#7c6f9a]/60 flex items-center">Performing</span>
+          <span className="block font-dm flex items-center" style={{ fontSize: `calc(11px * ${nameScale})`, color: 'rgba(124,111,154,0.6)' }}>Performing</span>
           <div className="flex items-center gap-3">
-             <span className="font-syne font-semibold text-white/90 truncate">{current?.singerName}</span>
-             <span className="font-dm text-sm text-white/40 truncate">{current?.title} — {current?.artist}</span>
+             <span className="font-syne font-semibold text-white/90 truncate" style={{ fontSize: `calc(14px * ${nameScale})` }}>{current?.singerName}</span>
+             <span className="font-dm text-white/40 truncate" style={{ fontSize: `calc(14px * ${nameScale})` }}>{current?.title} — {current?.artist}</span>
           </div>
        </div>
 
        <div className="flex gap-2">
           {queue.slice(0, 3).map((p, i) => (
-            <div key={p.id} className="px-3 py-1 bg-white/5 border border-white/7 rounded-full text-[#7c6f9a] text-[10px]">
+            <div key={p.id} className="px-3 py-1 bg-white/5 border border-white/7 rounded-full text-[#7c6f9a]" style={{ fontSize: `calc(10px * ${nameScale})` }}>
                {p.singerName}
             </div>
           ))}
           {queue.length > 3 && (
-            <span className="font-syne text-[10px] text-[#7c6f9a]/60 flex items-center">+{queue.length - 3}</span>
+            <span className="font-syne flex items-center" style={{ fontSize: `calc(10px * ${nameScale})`, color: 'rgba(124,111,154,0.6)' }}>+{queue.length - 3}</span>
           )}
        </div>
 
@@ -515,6 +516,7 @@ const NPBar = ({ current, queue = [] }) => {
     </div>
   );
 };
+
 
 // ─── PROMO CARD OVERLAY ENGINE ───────────────────────────────────────────────
 // Non-distracting, timed promo card that cycles through enabled promos.
@@ -552,9 +554,11 @@ const PROMO_THEMES = {
   custom:    { bg: 'from-cyan-900/90 to-indigo-800/80',  border: 'border-cyan-500/40',    text: 'text-cyan-300',    glow: 'shadow-[0_0_30px_rgba(34,211,238,0.25)]' }
 };
 
-const PromoCollageOverlay = ({ promos = [], active }) => {
+const PromoCollageOverlay = ({ promos = [], active, settings }) => {
   const activePromos = promos.filter(p => p.enabled).slice(0, 4);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const youtubeHandle = settings?.youtubeHandle || '';
+  const businessName = settings?.businessName || 'Vibe Sessions Studio';
 
   useEffect(() => {
     if (!active || activePromos.length <= 1) return;
@@ -567,28 +571,41 @@ const PromoCollageOverlay = ({ promos = [], active }) => {
   if (!active || activePromos.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#04020a]/80 backdrop-blur-2xl transition-all duration-1000 overflow-hidden">
-      {/* 3D Glassmorphism Glowing Orb in the background */}
+    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-[#04020a]/85 overflow-hidden">
+      {/* Production-grade layered glass backdrop */}
+      <div className="absolute inset-0 backdrop-blur-2xl" />
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 80% 80% at 50% 50%, rgba(139,92,246,0.12) 0%, rgba(217,70,239,0.08) 40%, transparent 70%)' }} />
+      <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 60% at 50% 50%, transparent 30%, rgba(4,2,10,0.4) 100%)' }} />
+
+      {/* 3D Glassmorphism Glowing Orb */}
       <motion.div 
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1, rotate: 360 }}
-        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-        className="absolute w-[700px] h-[700px] rounded-full blur-[120px] bg-gradient-to-tr from-[#db2777]/30 via-[#9333ea]/30 to-[#06b6d4]/30 pointer-events-none"
+        transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+        className="absolute w-[600px] h-[600px] rounded-full blur-[140px] bg-gradient-to-tr from-[#db2777]/25 via-[#9333ea]/20 to-[#06b6d4]/25 pointer-events-none"
       />
 
-      <div className="relative w-full max-w-5xl h-[600px] flex items-center justify-center" style={{ perspective: '1600px' }}>
+      {/* Top accent line */}
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#D946EF]/50 to-transparent" />
+      <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#8B5CF6]/30 to-transparent" />
+
+      {/* Corner L-brackets */}
+      <div className="absolute top-6 left-6 w-8 h-8 border-t-2 border-l-2 border-[#8b5cf6]/40 rounded-tl-sm" />
+      <div className="absolute top-6 right-6 w-8 h-8 border-t-2 border-r-2 border-[#8b5cf6]/40 rounded-tr-sm" />
+      <div className="absolute bottom-20 left-6 w-8 h-8 border-b-2 border-l-2 border-[#8b5cf6]/40 rounded-bl-sm" />
+      <div className="absolute bottom-20 right-6 w-8 h-8 border-b-2 border-r-2 border-[#8b5cf6]/40 rounded-br-sm" />
+
+      {/* Card Carousel */}
+      <div className="relative w-full max-w-5xl flex-1 flex items-center justify-center" style={{ perspective: '1600px' }}>
         {activePromos.map((promo, i) => {
           const theme = PROMO_THEMES[promo?.type] || PROMO_THEMES.custom;
           
-          // Calculate relative position for the circular orbit (-1, 0, 1)
           const total = activePromos.length;
           let offset = i - currentIndex;
           if (offset < -Math.floor(total / 2)) offset += total;
           if (offset > Math.floor(total / 2)) offset -= total;
           
           const isCenter = offset === 0;
-          
-          // 3D Math for Orb rotation
           const z = isCenter ? 0 : -350;
           const x = offset * 280;
           const rotateY = offset * -35;
@@ -608,20 +625,25 @@ const PromoCollageOverlay = ({ promos = [], active }) => {
                 filter: isCenter ? 'blur(0px)' : 'blur(5px)'
               }}
               transition={{ type: 'spring', stiffness: 100, damping: 20, mass: 1 }}
-              style={{ transformStyle: 'preserve-3d' }}
-              className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] md:w-[420px] p-6 rounded-[2rem] border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex flex-col gap-4 backdrop-blur-3xl`}
+              style={{ transformStyle: 'preserve-3d', position: 'absolute', top: '50%', left: '50%', marginTop: '-210px', marginLeft: '-210px' }}
+              className={`w-[340px] md:w-[420px] p-6 rounded-[2rem] border ${theme.border} bg-gradient-to-br ${theme.bg} shadow-[0_30px_80px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.05)] flex flex-col gap-4`}
             >
               {/* Center Shine effect */}
               {isCenter && (
                 <motion.div 
-                  className="absolute inset-0 z-20 pointer-events-none bg-gradient-to-tr from-transparent via-white/10 to-transparent"
-                  animate={{ x: ['-200%', '200%'] }}
-                  transition={{ duration: 3, repeat: Infinity, repeatDelay: 0.5 }}
-                />
+                  className="absolute inset-0 z-20 pointer-events-none rounded-[2rem] overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%, transparent 100%)' }}
+                >
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                    animate={{ x: ['-200%', '200%'] }}
+                    transition={{ duration: 3.5, repeat: Infinity, repeatDelay: 1 }}
+                  />
+                </motion.div>
               )}
               
               {promo.imageUrl && (
-                <div className="relative w-full h-48 md:h-56 rounded-2xl overflow-hidden shadow-inner bg-black/50">
+                <div className="relative w-full h-48 md:h-56 rounded-2xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] bg-black/50">
                   <img src={promo.imageUrl} alt={promo.title} className="w-full h-full object-cover" />
                   {promo.badgeText && (
                     <span
@@ -641,7 +663,7 @@ const PromoCollageOverlay = ({ promos = [], active }) => {
                   {promo.title}
                 </h3>
               </div>
-              <div className="flex items-center justify-between mt-4 z-10 relative bg-black/20 p-4 rounded-2xl border border-white/5">
+              <div className="flex items-center justify-between mt-4 z-10 relative bg-black/25 p-4 rounded-2xl border border-white/[0.07]">
                 <div className="flex items-baseline gap-2">
                   <span className="font-syne font-black text-3xl text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">{promo.price}</span>
                   {promo.originalPrice && (
@@ -654,9 +676,52 @@ const PromoCollageOverlay = ({ promos = [], active }) => {
           );
         })}
       </div>
+
+      {/* YouTube Branding Strip */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6, duration: 0.5 }}
+        className="relative z-50 w-full flex items-center justify-center pb-6 pt-3 gap-4 shrink-0"
+      >
+        <div className="flex items-center gap-3 bg-white/[0.06] backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+          {/* YouTube Icon */}
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg" style={{ backgroundColor: '#FF0000' }}>
+            <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+              <path d="M21.543 6.498C22 8.28 22 12 22 12s0 3.72-.457 5.502c-.254.985-.997 1.76-1.938 2.022C17.896 20 12 20 12 20s-5.893 0-7.605-.476c-.945-.266-1.687-1.04-1.938-2.022C2 15.72 2 12 2 12s0-3.72.457-5.502c.254-.985.997-1.76 1.938-2.022C6.107 4 12 4 12 4s5.896 0 7.605.476c.945.266 1.687 1.04 1.938 2.022zM10 15.5l6-3.5-6-3.5v7z"/>
+            </svg>
+          </div>
+          <div className="space-y-0">
+            <p className="font-syne text-[8px] font-bold uppercase tracking-[0.35em] text-white/40">Subscribe & Follow</p>
+            <p className="font-syne font-extrabold text-white text-sm leading-tight">
+              {youtubeHandle || businessName}
+            </p>
+          </div>
+          {/* Animated pulse ring */}
+          <div className="relative ml-2">
+            <div className="w-2 h-2 rounded-full bg-[#FF0000]" />
+            <div className="absolute inset-0 rounded-full bg-[#FF0000] animate-ping opacity-75" />
+          </div>
+        </div>
+
+        {/* Dot indicators */}
+        <div className="flex gap-1.5">
+          {activePromos.map((_, i) => (
+            <div
+              key={i}
+              className={`rounded-full transition-all duration-300 ${
+                i === currentIndex
+                  ? 'w-4 h-1.5 bg-[#D946EF]'
+                  : 'w-1.5 h-1.5 bg-white/20'
+              }`}
+            />
+          ))}
+        </div>
+      </motion.div>
     </div>
   );
 };
+
 
 const PromoCardOverlay = ({ promos = [], settings, isOutro = false }) => {
   const position = settings?.promoPosition || 'bottom-right';
@@ -821,8 +886,9 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
         const duration = player.getDuration();
         if (duration > 0) {
           const timeRemaining = duration - current;
-          // Trigger outro collage when 10 seconds remain
-          if (timeRemaining <= 10) {
+          // Trigger outro collage when outroDuration seconds remain (default 7s)
+          const outroDuration = settings?.outroDuration ?? 7;
+          if (timeRemaining <= outroDuration) {
             setIsOutro(true);
           } else {
             setIsOutro(false);
@@ -836,7 +902,8 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
     }, 3000);
     return () => clearInterval(poll);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tickerMode, tickerDuration, current?.videoId]);
+  }, [tickerMode, tickerDuration, current?.videoId, settings?.outroDuration]);
+
 
   const [isIntroActive, setIsIntroActive] = useState(true);
 
@@ -979,7 +1046,11 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
           scale: isHUDVisible ? 1 : 0.9 
         }}
         transition={{ duration: 1.0, ease: "easeInOut" }}
-        className="glass-card-stage z-10 p-10 md:p-16 max-w-[min(580px,88vw)] w-full text-center space-y-6 pointer-events-none"
+        className="glass-card-stage z-10 p-10 md:p-16 text-center space-y-6 pointer-events-none"
+        style={{
+          width: `min(${Math.round(580 * (settings?.hudCardScale ?? 100) / 100)}px, 88vw)`,
+          maxWidth: '95vw'
+        }}
       >
         <span className="font-syne text-[10px] uppercase tracking-[0.4em] animate-[labelGlow_3s_infinite]">Now Performing</span>
         <h1 className="LuxeFont text-white drop-shadow-[0_0_25px_rgba(217,70,239,0.8)] text-[clamp(40px,7.5vw,88px)] leading-[1.05] tracking-tight">{current.singerName}</h1>
@@ -1012,7 +1083,10 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
             className="fixed bottom-[96px] left-0 w-full z-20 overflow-hidden bg-black/50 border-y border-white/5 backdrop-blur-md py-2.5 shadow-2xl"
           >
             <div className="marquee-container">
-              <div className="marquee-content flex gap-32 text-[10px] font-syne font-bold uppercase tracking-[0.45em] text-[#D946EF] drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]">
+              <div
+                className="marquee-content flex gap-32 font-syne font-bold uppercase tracking-[0.45em] text-[#D946EF] drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]"
+                style={{ fontSize: `calc(10px * ${(settings?.tickerScale ?? 100) / 100})` }}
+              >
                 <span>{settings.promoText}</span>
                 <span>{settings.promoText}</span>
                 <span>{settings.promoText}</span>
@@ -1027,13 +1101,13 @@ const PlayingScreen = ({ current, queue = [], onEnded, onPlaybackFailed, showHUD
 
       {/* Promo Collage Engine (End of song) */}
       <AnimatePresence>
-        {isOutro && <PromoCollageOverlay promos={promos} active={isOutro} />}
+        {isOutro && <PromoCollageOverlay promos={promos} active={isOutro} settings={settings} />}
       </AnimatePresence>
 
       {/* Promo Card Overlay Engine */}
       <PromoCardOverlay promos={promos} settings={settings} isOutro={isOutro} />
 
-      <NPBar current={current} queue={queue} />
+      <NPBar current={current} queue={queue} settings={settings} />
     </motion.div>
   );
 };
