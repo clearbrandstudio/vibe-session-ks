@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Settings, Save, Layout, Tv, Megaphone, CheckCircle2, AlertCircle, 
   Trash2, Plus, ArrowUp, ArrowDown, Play, ExternalLink, Image as ImageIcon, 
-  Clock, Sparkles, Volume2, Power, Eye, Edit2, Sliders, ToggleLeft, ToggleRight
+  Clock, Sparkles, Volume2, Power, Eye, Edit2, Sliders, ToggleLeft, ToggleRight,
+  Upload
 } from 'lucide-react';
 
 const InputField = ({ label, value, onChange, placeholder, icon: Icon, type = 'text', textarea = false }) => (
@@ -63,12 +64,19 @@ export default function AdminPage() {
     // LED Stage Readability Scale
     tickerScale: 100,
     queueNameScale: 100,
-    hudCardScale: 100
+    hudCardScale: 100,
+    // Logo and Promos
+    logoUrl: '',
+    logoPosition: 'top-left',
+    logoScale: 100,
+    logoOnTransition: true,
+    promoScale: 100
   });
 
   // Feature Lists
   const [promos, setPromos] = useState([]);
   const [idlePlaylist, setIdlePlaylist] = useState([]);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Editor States
   const [selectedPromo, setSelectedPromo] = useState(null);
@@ -111,7 +119,13 @@ export default function AdminPage() {
           // LED Scale
           tickerScale: settingsData.tickerScale !== undefined ? settingsData.tickerScale : 100,
           queueNameScale: settingsData.queueNameScale !== undefined ? settingsData.queueNameScale : 100,
-          hudCardScale: settingsData.hudCardScale !== undefined ? settingsData.hudCardScale : 100
+          hudCardScale: settingsData.hudCardScale !== undefined ? settingsData.hudCardScale : 100,
+          // Logo and Promos
+          logoUrl: settingsData.logoUrl || '',
+          logoPosition: settingsData.logoPosition || 'top-left',
+          logoScale: settingsData.logoScale !== undefined ? settingsData.logoScale : 100,
+          logoOnTransition: settingsData.logoOnTransition !== undefined ? settingsData.logoOnTransition : true,
+          promoScale: settingsData.promoScale !== undefined ? settingsData.promoScale : 100
         });
 
         const promosRes = await fetch(`/api/promos?room=${roomID}`);
@@ -165,7 +179,13 @@ export default function AdminPage() {
         // LED Scale
         tickerScale: settings.tickerScale,
         queueNameScale: settings.queueNameScale,
-        hudCardScale: settings.hudCardScale
+        hudCardScale: settings.hudCardScale,
+        // Logo and Promos
+        logoUrl: settings.logoUrl,
+        logoPosition: settings.logoPosition,
+        logoScale: settings.logoScale,
+        logoOnTransition: settings.logoOnTransition,
+        promoScale: settings.promoScale
       };
       if (settings.youtubeApiKeyInput && settings.youtubeApiKeyInput.trim().length > 5) {
         payload.youtubeApiKey = settings.youtubeApiKeyInput.trim();
@@ -188,6 +208,35 @@ export default function AdminPage() {
       showToast('Network error saving settings', 'error');
     }
     setSaving(false);
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Data = reader.result;
+      try {
+        const res = await fetch(`/api/settings/upload-logo?room=${roomID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logoData: base64Data })
+        });
+        const data = await res.json();
+        if (data.success && data.logoUrl) {
+          setSettings(s => ({ ...s, logoUrl: data.logoUrl }));
+          showToast("Watermark logo uploaded successfully!");
+        } else {
+          showToast("Upload failed: " + (data.error || "Unknown error"), 'error');
+        }
+      } catch (err) {
+        showToast("Upload error. Check connection.", 'error');
+      } finally {
+        setUploadingLogo(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   // Ambient Mode Presets
@@ -652,6 +701,106 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Logo Watermark & Stinger Branding Card */}
+              <div className="glass-card-stage p-8 md:col-span-2 space-y-6">
+                <h2 className="flex items-center gap-3 LuxeFont text-xl">
+                  <Upload className="text-[#8B5CF6]" /> 
+                  Logo Watermark & Stinger Branding
+                </h2>
+                <p className="text-white/40 font-dm text-xs leading-relaxed">
+                  Upload your brand logo to serve as a high-fidelity translucent watermark on stage and kiosk screens, and optionally show a centered stinger animation on song transitions.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4">
+                  {/* Upload Block */}
+                  <div className="space-y-4">
+                    <label className="block text-[11px] font-syne font-bold uppercase tracking-widest text-white/50">Logo Image File</label>
+                    {settings.logoUrl ? (
+                      <div className="relative rounded-2xl bg-white/5 border border-white/10 p-4 flex flex-col items-center justify-center gap-3 group">
+                        <div className="relative w-full h-24 rounded-lg bg-black/40 border border-white/5 flex items-center justify-center p-2">
+                          <img src={settings.logoUrl} alt="Logo preview" className="max-h-full max-w-full object-contain" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettings(s => ({ ...s, logoUrl: '' }))}
+                          className="w-full py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-syne font-bold text-[9px] uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2"
+                        >
+                          <Trash2 size={12} /> Remove Logo
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="relative rounded-2xl border border-dashed border-[#8B5CF6]/30 bg-[#8B5CF6]/5 hover:bg-[#8B5CF6]/10 hover:border-[#D946EF]/50 transition-all p-6 flex flex-col items-center justify-center gap-2 cursor-pointer text-center group">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                        />
+                        {uploadingLogo ? (
+                          <>
+                            <div className="w-8 h-8 border-2 border-[#D946EF]/25 border-t-[#D946EF] rounded-full animate-spin mb-1" />
+                            <span className="font-syne font-extrabold text-[10px] uppercase tracking-widest text-[#D946EF]">Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={24} className="text-[#8B5CF6] group-hover:scale-110 transition-transform" />
+                            <span className="font-syne font-extrabold text-[10px] uppercase tracking-widest text-white/70">Upload Brand Logo</span>
+                            <span className="font-dm text-[9px] text-white/30">PNG, JPG, SVG, WEBP (Max 5MB)</span>
+                          </>
+                        )}
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Logo Options */}
+                  <div className="space-y-6">
+                    {/* Position */}
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-syne font-bold uppercase tracking-widest text-white/50">Watermark Position</label>
+                      <select
+                        value={settings.logoPosition}
+                        onChange={(e) => setSettings(s => ({ ...s, logoPosition: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-dm text-sm focus:outline-none focus:border-[#D946EF]/50 transition-all cursor-pointer"
+                      >
+                        <option value="top-left">Top Left Corner (Default)</option>
+                        <option value="top-right">Top Right Corner</option>
+                        <option value="bottom-left">Bottom Left Corner</option>
+                        <option value="bottom-right">Bottom Right Corner</option>
+                      </select>
+                    </div>
+
+                    {/* Scale */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs font-dm">
+                        <span className="font-bold text-white/70">Watermark Scale</span>
+                        <span className="font-mono text-[#D946EF] font-bold">{settings.logoScale}%</span>
+                      </div>
+                      <input type="range" min="50" max="200" step="5"
+                        className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                        value={settings.logoScale}
+                        onChange={(e) => setSettings(s => ({ ...s, logoScale: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    {/* Show in Transition stinger */}
+                    <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-white/80">Stinger Transition Logo</p>
+                        <p className="text-[9px] text-white/30">Display logo in the center during song intro stingers</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSettings(s => ({ ...s, logoOnTransition: !s.logoOnTransition }))}
+                        className="text-[#D946EF] focus:outline-none"
+                      >
+                        {settings.logoOnTransition ? <ToggleRight size={32} /> : <ToggleLeft size={32} className="opacity-40" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="glass-card-stage p-8 space-y-6">
                 <h3 className="font-syne text-[11px] font-extrabold uppercase tracking-wider text-[#D946EF] flex items-center gap-2">
                   <Power size={13} />
@@ -791,6 +940,20 @@ export default function AdminPage() {
                       onChange={(e) => setSettings(s => ({ ...s, outroDuration: parseInt(e.target.value) }))}
                     />
                     <p className="text-[9px] text-white/25">How many seconds before the song ends to show the promo collage outro.</p>
+                  </div>
+
+                  {/* Promotion Cards Scale */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-dm">
+                      <span className="font-bold text-white/70">Promotion Cards / Outro Scale</span>
+                      <span className="font-mono text-[#D946EF] font-bold">{settings.promoScale}%</span>
+                    </div>
+                    <input type="range" min="75" max="175" step="5"
+                      className="w-full accent-[#D946EF] bg-white/10 h-1.5 rounded-lg cursor-pointer"
+                      value={settings.promoScale}
+                      onChange={(e) => setSettings(s => ({ ...s, promoScale: parseInt(e.target.value) }))}
+                    />
+                    <p className="text-[9px] text-white/25">Scale the timed drink/food promo cards and outro collage on stage displays.</p>
                   </div>
                 </div>
 

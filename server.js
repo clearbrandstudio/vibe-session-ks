@@ -22,7 +22,14 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Ensure uploads folder exists and serve it
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // ──────────────────────────────────────────────
 // Static Assets with explicit MIME enforcement
@@ -258,7 +265,13 @@ app.get('/api/settings', (req, res) => {
       // LED Stage Readability Scale (percentage, 100 = normal)
       tickerScale: 100,
       queueNameScale: 100,
-      hudCardScale: 100
+      hudCardScale: 100,
+      // Branding Watermark Logo & Promo Scaling
+      logoUrl: '',
+      logoPosition: 'top-left',
+      logoScale: 100,
+      logoOnTransition: true,
+      promoScale: 100
     };
     
     if (!fs.existsSync(settingsPath)) {
@@ -326,7 +339,13 @@ app.post('/api/settings', (req, res) => {
       // LED Scale
       tickerScale,
       queueNameScale,
-      hudCardScale
+      hudCardScale,
+      // Logo and Promos
+      logoUrl,
+      logoPosition,
+      logoScale,
+      logoOnTransition,
+      promoScale
     } = req.body;
     
     const settingsPath = path.join(__dirname, 'settings.json');
@@ -366,7 +385,13 @@ app.post('/api/settings', (req, res) => {
       // LED Scale
       tickerScale: tickerScale !== undefined ? parseInt(tickerScale) : (prev.tickerScale !== undefined ? parseInt(prev.tickerScale) : 100),
       queueNameScale: queueNameScale !== undefined ? parseInt(queueNameScale) : (prev.queueNameScale !== undefined ? parseInt(prev.queueNameScale) : 100),
-      hudCardScale: hudCardScale !== undefined ? parseInt(hudCardScale) : (prev.hudCardScale !== undefined ? parseInt(prev.hudCardScale) : 100)
+      hudCardScale: hudCardScale !== undefined ? parseInt(hudCardScale) : (prev.hudCardScale !== undefined ? parseInt(prev.hudCardScale) : 100),
+      // Logo and Promos
+      logoUrl: logoUrl !== undefined ? logoUrl : (prev.logoUrl || ''),
+      logoPosition: logoPosition !== undefined ? logoPosition : (prev.logoPosition || 'top-left'),
+      logoScale: logoScale !== undefined ? parseInt(logoScale) : (prev.logoScale !== undefined ? parseInt(prev.logoScale) : 100),
+      logoOnTransition: logoOnTransition !== undefined ? !!logoOnTransition : (prev.logoOnTransition !== undefined ? !!prev.logoOnTransition : true),
+      promoScale: promoScale !== undefined ? parseInt(promoScale) : (prev.promoScale !== undefined ? parseInt(prev.promoScale) : 100)
     };
     
     fs.writeFileSync(settingsPath, JSON.stringify(allSettings, null, 2));
@@ -386,6 +411,61 @@ app.post('/api/settings', (req, res) => {
   } catch (err) {
     console.error('[Settings] Save error:', err);
     res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// ── POST /api/settings/upload-logo
+app.post('/api/settings/upload-logo', (req, res) => {
+  const roomID = req.query.room || 'default';
+  const { logoData } = req.body;
+  if (!logoData) return res.status(400).json({ error: 'No logo data provided' });
+
+  try {
+    const matches = logoData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid base64 image data format' });
+    }
+
+    const mimeType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    
+    if (!mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Uploaded file is not an image' });
+    }
+
+    let extension = 'png';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) extension = 'jpg';
+    else if (mimeType.includes('gif')) extension = 'gif';
+    else if (mimeType.includes('svg')) extension = 'svg';
+    else if (mimeType.includes('webp')) extension = 'webp';
+
+    const filename = `logo-${roomID}-${Date.now()}.${extension}`;
+    const uploadsDir = path.join(__dirname, 'uploads');
+    
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir);
+    }
+
+    // Cleanup previous logos for this room
+    try {
+      const files = fs.readdirSync(uploadsDir);
+      files.forEach(file => {
+        if (file.startsWith(`logo-${roomID}-`)) {
+          fs.unlinkSync(path.join(uploadsDir, file));
+        }
+      });
+    } catch (err) {
+      console.warn('[Upload Logo] Failed to clean up older files:', err);
+    }
+
+    fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+
+    const logoUrl = `/uploads/${filename}`;
+    console.log(`[Upload Logo] Logo successfully saved for room: ${roomID} -> ${logoUrl}`);
+    res.json({ success: true, logoUrl });
+  } catch (err) {
+    console.error('[Upload Logo] Save failed:', err);
+    res.status(500).json({ error: 'Failed to upload and save logo' });
   }
 });
 

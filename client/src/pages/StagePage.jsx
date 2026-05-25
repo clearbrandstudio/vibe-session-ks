@@ -319,7 +319,7 @@ const IdleScreen = ({ nextPerformer, queue = [], onStart, settings }) => {
   );
 };
 
-const Stinger = ({ current, onComplete }) => {
+const Stinger = ({ current, settings, onComplete }) => {
   if (!current) return null;
   const [phase, setPhase] = useState(0);
   const onCompleteRef = useRef(onComplete);
@@ -377,6 +377,25 @@ const Stinger = ({ current, onComplete }) => {
               <div className="absolute top-0 right-0 w-9 h-9 border-t-2 border-r-2 border-[#8b5cf6]/45" />
               <div className="absolute bottom-0 left-0 w-9 h-9 border-b-2 border-l-2 border-[#8b5cf6]/45" />
               <div className="absolute bottom-0 right-0 w-9 h-9 border-b-2 border-r-2 border-[#8b5cf6]/45" />
+
+              {/* Dynamic Stinger Logo Branding */}
+              {settings?.logoUrl && settings?.logoOnTransition && (
+                <div className="flex justify-center mb-6">
+                  <motion.img 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 100, delay: 0.15 }}
+                    src={settings.logoUrl} 
+                    alt="Stinger Logo" 
+                    style={{ 
+                      maxHeight: `calc(90px * ${(settings?.logoScale ?? 100) / 100})`, 
+                      maxWidth: '240px',
+                      objectFit: 'contain' 
+                    }}
+                    className="drop-shadow-[0_0_20px_rgba(255,255,255,0.35)]" 
+                  />
+                </div>
+              )}
 
               <span className="font-syne text-[11px] text-[#db2777] uppercase tracking-[0.4em]">Now Performing</span>
               <h1 className="LuxeFont text-gradient-broadcast text-[clamp(52px,9vw,112px)] leading-none filter drop-shadow-[0_0_40px_rgba(236,72,153,0.5)]">
@@ -605,11 +624,12 @@ const PromoCollageOverlay = ({ promos = [], active, settings }) => {
           if (offset < -Math.floor(total / 2)) offset += total;
           if (offset > Math.floor(total / 2)) offset -= total;
           
+          const promoScale = (settings?.promoScale ?? 100) / 100;
           const isCenter = offset === 0;
           const z = isCenter ? 0 : -350;
-          const x = offset * 280;
+          const x = offset * 280 * promoScale;
           const rotateY = offset * -35;
-          const scale = isCenter ? 1 : 0.75;
+          const scale = (isCenter ? 1 : 0.75) * promoScale;
           const opacity = isCenter ? 1 : Math.max(0, 1 - Math.abs(offset) * 0.5);
 
           return (
@@ -777,8 +797,18 @@ const PromoCardOverlay = ({ promos = [], settings, isOutro = false }) => {
   const endHour   = promo.schedule?.endHour   ?? 24;
   const isActiveHour = currentHour >= startHour && currentHour < endHour;
 
+  const promoScale = (settings?.promoScale ?? 100) / 100;
+  const transformOrigin = position.replace('-', ' ');
+
   return (
-    <div className={posClass} style={{ perspective: '800px' }}>
+    <div 
+      className={posClass} 
+      style={{ 
+        perspective: '800px',
+        transform: `scale(${promoScale})`,
+        transformOrigin: transformOrigin
+      }}
+    >
       <AnimatePresence mode="wait">
         {visible && isActiveHour && !isOutro && (
           <motion.div
@@ -1777,11 +1807,33 @@ export default function StagePage() {
       <Atmo vignette={settings?.vignette} brightness={settings?.brightness} />
       <Particles />
 
-      {/* Logo Bug */}
-      <div className="fixed top-12 left-12 z-25 opacity-30 font-syne text-[11px] text-[#f8f4ff] tracking-[0.4em] uppercase pointer-events-none flex items-center gap-4">
-        <div className="w-1.5 h-1.5 bg-[#db2777] rounded-full animate-pulse" />
-        {settings?.businessName || 'Vibe Sessions Studio'}
-      </div>
+      {/* Watermark Logo Bug */}
+      {settings?.logoUrl ? (
+        <div 
+          className={`${
+            settings.logoPosition === 'top-right' ? 'fixed top-12 right-12 z-25' :
+            settings.logoPosition === 'bottom-left' ? 'fixed bottom-28 left-12 z-25' :
+            settings.logoPosition === 'bottom-right' ? 'fixed bottom-28 right-12 z-25' :
+            'fixed top-12 left-12 z-25'
+          } opacity-45 pointer-events-none transition-all duration-500`}
+        >
+          <img 
+            src={settings.logoUrl} 
+            alt="Watermark Logo" 
+            style={{ 
+              height: `calc(40px * ${(settings?.logoScale ?? 100) / 100})`, 
+              maxWidth: '180px',
+              objectFit: 'contain'
+            }}
+            className="drop-shadow-[0_0_8px_rgba(0,0,0,0.5)]"
+          />
+        </div>
+      ) : (
+        <div className="fixed top-12 left-12 z-25 opacity-30 font-syne text-[11px] text-[#f8f4ff] tracking-[0.4em] uppercase pointer-events-none flex items-center gap-4">
+          <div className="w-1.5 h-1.5 bg-[#db2777] rounded-full animate-pulse" />
+          {settings?.businessName || 'Vibe Sessions Studio'}
+        </div>
+      )}
 
       <div className="relative z-10 w-full h-full flex items-center justify-center">
         <AnimatePresence mode="wait">
@@ -1867,6 +1919,7 @@ export default function StagePage() {
           <Stinger 
             key={`stinger-${current?.videoId || ''}`} 
             current={current} 
+            settings={settings}
             onComplete={() => {
               setShowHUD(true);
               setStage(ST.COUNTDOWN);

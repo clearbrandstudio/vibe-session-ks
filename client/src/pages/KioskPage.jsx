@@ -333,6 +333,7 @@ export default function KioskPage() {
   const [contrast, setContrast] = useState(100);
   const [overlayOpacity, setOverlayOpacity] = useState(40);
   const [ambientMode, setAmbientMode] = useState('balanced');
+  const [logoUrl, setLogoUrl] = useState("");
   const [toast, setToast] = useState({ show: false, msg: "" });
   const [shakeInput, setShakeInput] = useState(false);
 
@@ -385,6 +386,7 @@ export default function KioskPage() {
           if (data.contrast !== undefined) setContrast(data.contrast);
           if (data.overlayOpacity !== undefined) setOverlayOpacity(data.overlayOpacity);
           if (data.ambientMode !== undefined) setAmbientMode(data.ambientMode);
+          if (data.logoUrl !== undefined) setLogoUrl(data.logoUrl);
         }).catch(err => console.warn('[Settings fallback] failed to fetch:', err));
 
       fetch(`/api/state?room=${roomID}`)
@@ -409,6 +411,7 @@ export default function KioskPage() {
       if (newSettings.contrast !== undefined) setContrast(newSettings.contrast);
       if (newSettings.overlayOpacity !== undefined) setOverlayOpacity(newSettings.overlayOpacity);
       if (newSettings.ambientMode !== undefined) setAmbientMode(newSettings.ambientMode);
+      if (newSettings.logoUrl !== undefined) setLogoUrl(newSettings.logoUrl);
     };
     socket.on("settings:updated", onSettingsUpdated);
 
@@ -665,8 +668,18 @@ export default function KioskPage() {
       {/* ── NAV BAR ── */}
       <nav className="relative z-[100] flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-2 sm:py-3 border-b border-[#8b5cf6]/18 bg-[#040202]/88 backdrop-blur-2xl shrink-0">
         {/* Logo */}
-        <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-xs sm:text-sm font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase shrink-0">
-          {businessName || 'Vibe Sessions Studio'}
+        <div className="flex items-center gap-3 shrink-0">
+          {logoUrl ? (
+            <img 
+              src={logoUrl} 
+              alt="Logo" 
+              className="h-8 sm:h-9 max-w-[120px] object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]" 
+            />
+          ) : (
+            <div className="LuxeFont text-transparent bg-clip-text bg-gradient-to-r from-[#8B5CF6] via-[#D946EF] to-[#EC4899] text-xs sm:text-sm font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase">
+              {businessName || 'Vibe Sessions Studio'}
+            </div>
+          )}
         </div>
 
         {/* Search Bar */}

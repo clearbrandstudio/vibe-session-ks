@@ -30,6 +30,9 @@ client_backup/
 # These are generated at runtime on the server — never commit them
 tenants.json
 
+# User Uploaded Assets
+uploads/
+
 # IDE / Editors
 .vscode/
 .idea/
